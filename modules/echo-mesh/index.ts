@@ -21,6 +21,7 @@ const Native = requireNativeModule('EchoMesh') as {
   stopVoice(groupId: string): Promise<void>;
   triggerSOS(groupId: string): Promise<string>;
   relayVoiceFrame(groupId: string, dataB64: string): Promise<void>;
+  replay(groupId: string, senderId: string, wireMessageId: number, ts: number, kind: 'text' | 'sos', body: string): Promise<void>;
   getCurrentPeers(): Promise<NativePeer[]>;
 };
 
@@ -56,6 +57,17 @@ export function triggerSOS(groupId: string): Promise<string> {
 
 export function relayVoiceFrame(groupId: string, dataB64: string): Promise<void> {
   return Native.relayVoiceFrame(groupId, dataB64);
+}
+
+export function replay(
+  groupId: string,
+  senderId: string,
+  wireMessageId: number,
+  ts: number,
+  kind: 'text' | 'sos',
+  body: string,
+): Promise<void> {
+  return Native.replay(groupId, senderId, wireMessageId, ts, kind, body);
 }
 
 export function getCurrentPeers(): Promise<NativePeer[]> {

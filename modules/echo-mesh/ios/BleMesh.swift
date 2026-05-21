@@ -129,6 +129,21 @@ final class BleMesh: NSObject, MeshTransport {
     emit("onVoiceActivity", ["active": false])
   }
 
+  func replay(groupId: String, senderId: String, wireMessageId: UInt32, ts: Double, kind: String, body: String) {
+    if outboundPeripherals.isEmpty { return }
+    let frameKind: UInt8 = (kind == "sos") ? Frame.KIND_SOS : Frame.KIND_TEXT
+    let frame = Frame(
+      kind: frameKind,
+      hopCount: 0,
+      senderId: senderId,
+      groupId: groupId,
+      messageId: wireMessageId,
+      timestamp: UInt32(truncatingIfNeeded: Int64(ts / 1000)),
+      payload: Frame.textPayload(body)
+    )
+    broadcastFrame(frame)
+  }
+
   func relayVoiceFrame(groupId: String, dataB64: String) {
     guard let payload = Data(base64Encoded: dataB64) else { return }
     // TODO(stage-2): chunk if encoded frame > MTU.
@@ -229,13 +244,15 @@ final class BleMesh: NSObject, MeshTransport {
       guard let target = Frame.parseAck(frame.payload) else { break }
       guard let entry = pending.ack(target, by: frame.senderId) else { break }
       let done = entry.ackedBy.count >= entry.expectedAcks
-      emit("onMessage", outboundEventMap(
+      var m = outboundEventMap(
         jsId: entry.jsId,
         frame: entry.frame,
         body: entry.body,
         status: done ? "delivered" : "sent",
         delivered: entry.ackedBy.count
-      ))
+      )
+      m["ackingSenderId"] = frame.senderId
+      emit("onMessage", m)
       if done { _ = pending.remove(target) }
 
     default:
@@ -355,6 +372,7 @@ final class BleMesh: NSObject, MeshTransport {
       "status": status,
       "peerCount": peers.count,
       "deliveredCount": delivered,
+      "wireMessageId": Double(frame.messageId),
     ]
   }
 
@@ -371,6 +389,7 @@ final class BleMesh: NSObject, MeshTransport {
       "mine": false,
       "status": frame.hopCount > 0 ? "relayed" : "delivered",
       "relayedHops": frame.hopCount,
+      "wireMessageId": Double(frame.messageId),
     ]
   }
 

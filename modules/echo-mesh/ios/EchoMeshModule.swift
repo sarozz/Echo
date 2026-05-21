@@ -79,6 +79,17 @@ public class EchoMeshModule: Module {
       self.activeTransport()?.relayVoiceFrame(groupId: groupId, dataB64: dataB64)
     }
 
+    AsyncFunction("replay") { (groupId: String, senderId: String, wireMessageId: Double, ts: Double, kind: String, body: String) in
+      self.activeTransport()?.replay(
+        groupId: groupId,
+        senderId: senderId,
+        wireMessageId: UInt32(truncatingIfNeeded: Int64(wireMessageId)),
+        ts: ts,
+        kind: kind,
+        body: body
+      )
+    }
+
     AsyncFunction("getCurrentPeers") { () -> [[String: Any]] in
       return self.activeTransport()?.snapshotPeers() ?? []
     }

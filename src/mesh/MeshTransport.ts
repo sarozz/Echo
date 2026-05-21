@@ -24,6 +24,20 @@ export interface MeshTransport {
 
   triggerSOS(groupId: string): void;
 
+  /**
+   * Re-broadcasts a previously-sent TEXT/SOS frame with its original wire IDs.
+   * Used by store-and-forward when a peer reconnects. May be a no-op on the
+   * mock transport.
+   */
+  replay?(
+    groupId: string,
+    senderId: string,
+    wireMessageId: number,
+    ts: number,
+    kind: 'text' | 'sos',
+    body: string,
+  ): void;
+
   onPeers(cb: PeersListener): () => void;
   onMessage(cb: MessageListener): () => void;
   onState(cb: StateListener): () => void;

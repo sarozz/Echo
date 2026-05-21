@@ -31,6 +31,10 @@ export interface NativeMessageEvent {
   ts: number;
   mine: boolean;
   status: NativeDelivery;
+  /** Sender-local u32 sequence — needed by persistence for cross-restart dedup. */
+  wireMessageId?: number;
+  /** If this is a delivery update for a previously-emitted message, the acking peer id. */
+  ackingSenderId?: string;
   relayedHops?: number;
   deliveredCount?: number;
   peerCount?: number;

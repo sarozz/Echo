@@ -15,6 +15,13 @@ internal interface MeshTransport {
   fun triggerSOS(groupId: String): String
   /** Broadcasts a captured Opus frame as a VOICE wire frame. dataB64 is the encoded payload. */
   fun relayVoiceFrame(groupId: String, dataB64: String)
+  /**
+   * Re-broadcasts a stored TEXT/SOS message with its original wire IDs. Used
+   * by store-and-forward when a peer reconnects. SeenSet on the receiver
+   * absorbs duplicates within a session; JS-side persistence dedups across
+   * restarts.
+   */
+  fun replay(groupId: String, senderId: String, wireMessageId: Long, ts: Long, kind: String, body: String)
   fun snapshotPeers(): List<Map<String, Any?>>
 }
 

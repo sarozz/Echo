@@ -31,6 +31,7 @@ interface NativeMeshModule {
   stopVoice(groupId: string): Promise<void>;
   triggerSOS(groupId: string): Promise<string>;
   relayVoiceFrame(groupId: string, dataB64: string): Promise<void>;
+  replay(groupId: string, senderId: string, wireMessageId: number, ts: number, kind: 'text' | 'sos', body: string): Promise<void>;
   onPeers(cb: (peers: NativePeer[]) => void): Subscription;
   onMessage(cb: (m: NativeMessageEvent) => void): Subscription;
   onState(cb: (s: NativeStateEvent) => void): Subscription;
@@ -146,6 +147,10 @@ export class NativeTransport implements MeshTransport {
 
   triggerSOS(groupId: string): void {
     void this.mesh.triggerSOS(groupId);
+  }
+
+  replay(groupId: string, senderId: string, wireMessageId: number, ts: number, kind: 'text' | 'sos', body: string): void {
+    void this.mesh.replay(groupId, senderId, wireMessageId, ts, kind, body);
   }
 
   onPeers(cb: PeersListener): () => void {

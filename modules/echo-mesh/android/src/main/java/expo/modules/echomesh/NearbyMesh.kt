@@ -157,6 +157,25 @@ internal class NearbyMesh(
     emit("onVoiceActivity", mapOf("active" to false))
   }
 
+  override fun replay(groupId: String, senderId: String, wireMessageId: Long, ts: Long, kind: String, body: String) {
+    if (peers.isEmpty()) return
+    val frameKind = when (kind) {
+      "sos" -> Frame.KIND_SOS
+      else -> Frame.KIND_TEXT
+    }
+    val frame = Frame(
+      kind = frameKind,
+      hopCount = 0,
+      senderId = senderId,
+      groupId = groupId,
+      messageId = wireMessageId,
+      timestamp = ts / 1000L,
+      payload = Frame.textPayload(body),
+    )
+    // Do NOT add to local seen — we want the receiver's seen set to handle dedup.
+    broadcastFrame(frame)
+  }
+
   override fun relayVoiceFrame(groupId: String, dataB64: String) {
     if (peers.isEmpty()) return
     val payload = try { Base64.decode(dataB64, Base64.NO_WRAP) } catch (t: Throwable) {
@@ -312,13 +331,15 @@ internal class NearbyMesh(
       Frame.KIND_ACK -> {
         val target = Frame.parseAck(frame.payload) ?: return
         val entry = pending.ack(target, ackingSenderId = frame.senderId) ?: return
-        emit("onMessage", outboundEventMap(
+        val map = outboundEventMap(
           jsId = entry.jsId,
           frame = entry.frame,
           body = entry.body,
           status = if (entry.ackedBy.size >= entry.expectedAcks) "delivered" else "sent",
           delivered = entry.ackedBy.size,
-        ))
+        ).toMutableMap()
+        map["ackingSenderId"] = frame.senderId
+        emit("onMessage", map)
         if (entry.ackedBy.size >= entry.expectedAcks) pending.remove(target)
       }
     }
@@ -456,6 +477,7 @@ internal class NearbyMesh(
     "status" to status,
     "peerCount" to peers.size,
     "deliveredCount" to delivered,
+    "wireMessageId" to frame.messageId,
   )
 
   private fun incomingEventMap(frame: Frame): Map<String, Any?> {
@@ -471,6 +493,7 @@ internal class NearbyMesh(
       "mine" to false,
       "status" to if (frame.hopCount > 0) "relayed" else "delivered",
       "relayedHops" to frame.hopCount,
+      "wireMessageId" to frame.messageId,
     )
   }
 

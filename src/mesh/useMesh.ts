@@ -11,6 +11,12 @@ import type {
   Peer,
   VoiceActivity,
 } from './types';
+import {
+  hydrateGroup,
+  initStoreAndForward,
+  onPeersChanged,
+  persistMessage,
+} from './storeAndForward';
 
 /**
  * Transport selection.
@@ -98,7 +104,7 @@ export const useMesh = create<MeshStore>((set, get) => ({
 
   switchGroup: (groupId) => {
     transport.joinGroup(groupId);
-    set({ activeGroupId: groupId, messages: [] });
+    set({ activeGroupId: groupId, messages: hydrateGroup(groupId) });
   },
 
   joinByCode: (code) => {
@@ -127,12 +133,21 @@ export function useMeshBootstrap(): void {
   useEffect(() => {
     if (!started) {
       started = true;
+      initStoreAndForward();
       transport.start();
-      transport.joinGroup(useMesh.getState().activeGroupId);
+      const initialGroup = useMesh.getState().activeGroupId;
+      transport.joinGroup(initialGroup);
+      // Hydrate the active group's history before any new events land.
+      useMesh.setState({ messages: hydrateGroup(initialGroup) });
     }
+
+    const replayFn = transport.replay?.bind(transport);
 
     const offPeers = transport.onPeers((peers) => {
       useMesh.setState({ peers });
+      if (replayFn) onPeersChanged(peers, async (g, sid, wid, ts, kind, body) => {
+        replayFn(g, sid, wid, ts, kind, body);
+      });
     });
     const offState = transport.onState((state) => {
       useMesh.setState((prev) => ({ state: { ...state, mode: prev.state.mode } }));
@@ -141,6 +156,7 @@ export function useMeshBootstrap(): void {
       useMesh.setState({ voice });
     });
     const offMsg = transport.onMessage((m) => {
+      persistMessage(m);
       useMesh.setState((prev) => {
         const idx = prev.messages.findIndex((x) => x.id === m.id);
         if (idx >= 0) {
