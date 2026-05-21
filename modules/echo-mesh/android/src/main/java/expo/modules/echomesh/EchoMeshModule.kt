@@ -1,5 +1,8 @@
 package expo.modules.echomesh
 
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +48,7 @@ class EchoMeshModule : Module() {
 
     OnDestroy {
       stopInternal()
+      stopForegroundService()
       scope.cancel()
       MeshEventBus.unbind()
     }
@@ -66,8 +70,8 @@ class EchoMeshModule : Module() {
         "backend" to activeBackend.wire,
       ))
       when (activeBackend) {
-        Backend.NEARBY -> nearby.start(self)
-        Backend.BLE -> ble.start(self)
+        Backend.NEARBY -> { nearby.start(self); startForegroundService() }
+        Backend.BLE -> { ble.start(self); startForegroundService() }
         Backend.NONE -> {
           emit("onState", mapOf(
             "conn" to "offline",
@@ -82,6 +86,7 @@ class EchoMeshModule : Module() {
 
     AsyncFunction("stop") {
       stopInternal()
+      stopForegroundService()
     }
 
     AsyncFunction("joinGroup") { groupId: String ->
@@ -147,6 +152,26 @@ class EchoMeshModule : Module() {
   // Type-erased emit so transports can publish without touching the Module API.
   private fun emit(name: String, payload: Any?) {
     sendEvent(name, payload as? Map<String, Any?> ?: mapOf("value" to payload))
+  }
+
+  private fun startForegroundService() {
+    val ctx = appContext.reactContext ?: return
+    try {
+      val intent = Intent(ctx, MeshForegroundService::class.java)
+      ContextCompat.startForegroundService(ctx, intent)
+    } catch (t: Throwable) {
+      android.util.Log.w("EchoMesh", "startForegroundService failed", t)
+    }
+  }
+
+  private fun stopForegroundService() {
+    val ctx = appContext.reactContext ?: return
+    try {
+      val intent = Intent(ctx, MeshForegroundService::class.java)
+      ctx.stopService(intent)
+    } catch (t: Throwable) {
+      android.util.Log.w("EchoMesh", "stopForegroundService failed", t)
+    }
   }
 }
 

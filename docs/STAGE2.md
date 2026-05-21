@@ -48,7 +48,7 @@ Each module ships:
 | `EchoMesh` iOS Multipeer loop        | ✅ Real — advertise + browse + auto-accept + HELLO + relay + dedup |
 | `EchoMesh` Android BLE GATT loop     | ✅ Real — symmetric central+peripheral, write-based frames, HELLO, relay, dedup. Chunking is TODO. |
 | `EchoMesh` iOS Core Bluetooth loop   | ✅ Real — symmetric CBCentralManager + CBPeripheralManager, mirrors Android. Chunking is TODO. |
-| Mesh foreground service (Android)    | 🟡 Service real, trigger from module is TODO(stage-2)   |
+| Mesh foreground service (Android)    | ✅ Real — module starts the service in `start()` and stops it in `stop()` / `OnDestroy` so the mesh survives screen lock |
 | `EchoAudio` mic capture (both OS)    | ✅ Real (`AudioRecord` / `AVAudioEngine`)                |
 | `EchoAudio` playback (both OS)       | ✅ Real (`AudioTrack` / `AVAudioPlayerNode`)             |
 | `EchoAudio` RMS VAD                  | ✅ Real                                                 |
@@ -130,4 +130,4 @@ The transport-selection preference order in `EchoMeshModule.start` controls this
 5. ~~Replace the Opus passthrough with a real binding.~~ ✅ Android done — MediaCodec audio/opus replaces the passthrough on API 29+; older devices keep PCM passthrough until libopus is bundled. iOS still passthrough — recommend libopus pod (see `ios/Opus.swift` header).
 6. ~~Replace the FIFO jitter buffer with a ts-sorted variant + PLC.~~ ✅ Done — both platforms now reorder by ts, adapt depth via EMA of inter-arrival jitter, and run repeat-with-fade PLC on detected gaps.
 7. ~~Add ACK + retransmit for TEXT and SOS frames.~~ ✅ Done — every TEXT/SOS receive sends a directed `KIND_ACK` back; senders track pending messages in `PendingTable` and re-emit `onMessage` with bumped `deliveredCount` and status `sent` → `delivered` when the last ACK lands. BLE adds a single 3s retransmit to peers that haven't ACKed (Nearby/Multipeer already have reliable delivery at the transport).
-8. Plug `MeshForegroundService` start/stop into module lifecycle.
+8. ~~Plug `MeshForegroundService` start/stop into module lifecycle.~~ ✅ Done — `EchoMeshModule.start()` calls `ContextCompat.startForegroundService(...)`, `stop()` and `OnDestroy` call `stopService(...)`. Notification scaffolding was already in `MeshForegroundService.kt`.
