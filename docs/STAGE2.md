@@ -43,9 +43,10 @@ Each module ships:
 | Config plugin (foreground service)   | ✅ Real                                                 |
 | Native module surfaces (TS + native) | ✅ Real, methods + events callable end-to-end           |
 | Wire-protocol codec (Kotlin)         | ✅ Real — `Frame.kt` mirrors `protocol.ts` byte-for-byte |
+| Wire-protocol codec (Swift)          | ✅ Real — `Frame.swift` mirrors `Frame.kt` byte-for-byte |
 | `EchoMesh` Android Nearby loop       | ✅ Real — advertise + discover + accept + payloads + HELLO + relay + dedup |
+| `EchoMesh` iOS Multipeer loop        | ✅ Real — advertise + browse + auto-accept + HELLO + relay + dedup |
 | `EchoMesh` Android BLE GATT loop     | 🟡 Skeleton — TODO(stage-2) at advertise/scan/subscribe |
-| `EchoMesh` iOS Multipeer loop        | 🟡 Skeleton — TODO(stage-2) at MCSession delegate       |
 | `EchoMesh` iOS Core Bluetooth loop   | 🟡 Skeleton — TODO(stage-2) at CB delegates             |
 | Mesh foreground service (Android)    | 🟡 Service real, trigger from module is TODO(stage-2)   |
 | `EchoAudio` mic capture (both OS)    | ✅ Real (`AudioRecord` / `AVAudioEngine`)                |
@@ -122,7 +123,7 @@ The transport-selection preference order in `EchoMeshModule.start` controls this
 ## Next steps in priority order
 
 1. ~~Fill in the Nearby Connections discovery → connection flow.~~ ✅ Done — Android↔Android text + SOS over Nearby with hop relay and dedup.
-2. Fill in the MultipeerConnectivity MCSession delegate on iOS (mirrors Nearby flow 1:1). Add a Swift `Frame.swift` mirroring `Frame.kt`.
+2. ~~Fill in the MultipeerConnectivity MCSession delegate on iOS.~~ ✅ Done — iOS↔iOS text + SOS over Multipeer with hop relay and dedup. `Frame.swift` mirrors `Frame.kt`.
 3. Fill in the BLE GATT advertise/scan/subscribe/write loop on both platforms (cross-platform Android↔iOS fallback). Use the shared UUIDs in `BleMesh.{kt,swift}`.
 4. Wire `pushIncomingFrame` calls from the mesh module to the audio module when a VOICE frame arrives — the two modules don't talk to each other natively yet. Easiest: a small shared singleton (`MeshAudioBridge`) on each platform.
 5. Replace the Opus passthrough with a real binding.
