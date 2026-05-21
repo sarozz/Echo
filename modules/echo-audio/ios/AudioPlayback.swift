@@ -2,10 +2,10 @@ import Foundation
 import AVFoundation
 
 /**
- * JitterBuffer -> Opus decode -> AVAudioPlayerNode.
+ * Adaptive JitterBuffer → Opus decode → AVAudioPlayerNode.
  *
- * STAGE 2 status: real AVAudioEngine + AVAudioPlayerNode. PCM passthrough
- * decoder. Simple FIFO jitter buffer.
+ * Mirrors AudioPlayback.kt: pop-based jitter loop with PLC (repeat-last-
+ * frame at half amplitude) for missing frames.
  */
 final class AudioPlayback {
   private let engine = AVAudioEngine()
@@ -16,6 +16,7 @@ final class AudioPlayback {
   private var started = false
   private var pumpTask: Task<Void, Never>?
   private var format: AVAudioFormat?
+  private var lastPcm: [Int16]?
 
   init(jitter: JitterBuffer, stats: AudioStats) {
     self.jitter = jitter
@@ -43,22 +44,37 @@ final class AudioPlayback {
     pumpTask = Task.detached(priority: .userInitiated) { [weak self] in
       while !Task.isCancelled {
         guard let self else { return }
-        guard let frame = self.jitter.pop(), let fmt = self.format else {
+        guard let fmt = self.format else { return }
+        switch self.jitter.pop() {
+        case .notReady:
           try? await Task.sleep(nanoseconds: 5_000_000)
-          continue
-        }
-        guard let data = Data(base64Encoded: frame.data) else {
+
+        case .conceal:
+          if let prev = self.lastPcm,
+             let buffer = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(prev.count)) {
+            buffer.frameLength = AVAudioFrameCount(prev.count)
+            if let int16Channel = buffer.int16ChannelData?.pointee {
+              for i in 0..<prev.count { int16Channel[i] = Int16(Int(prev[i]) / 2) }
+            }
+            self.player.scheduleBuffer(buffer, completionHandler: nil)
+          }
           self.stats.dropped += 1
-          continue
+
+        case .play(let frame):
+          guard let data = Data(base64Encoded: frame.data) else {
+            self.stats.dropped += 1
+            continue
+          }
+          let pcm = self.decoder.decode(bytes: [UInt8](data))
+          guard let buffer = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(pcm.count)) else { continue }
+          buffer.frameLength = AVAudioFrameCount(pcm.count)
+          if let int16Channel = buffer.int16ChannelData?.pointee {
+            for i in 0..<pcm.count { int16Channel[i] = pcm[i] }
+          }
+          self.player.scheduleBuffer(buffer, completionHandler: nil)
+          self.lastPcm = pcm
+          self.stats.played += 1
         }
-        let pcm = self.decoder.decode(bytes: [UInt8](data))
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(pcm.count)) else { continue }
-        buffer.frameLength = AVAudioFrameCount(pcm.count)
-        if let int16Channel = buffer.int16ChannelData?.pointee {
-          for i in 0..<pcm.count { int16Channel[i] = pcm[i] }
-        }
-        self.player.scheduleBuffer(buffer, completionHandler: nil)
-        self.stats.played += 1
       }
     }
   }
@@ -70,6 +86,7 @@ final class AudioPlayback {
     pumpTask = nil
     player.stop()
     engine.stop()
+    lastPcm = nil
     jitter.clear()
   }
 }

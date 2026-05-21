@@ -13,9 +13,10 @@ import kotlinx.coroutines.launch
 /**
  * JitterBuffer → Opus decode → AudioTrack.
  *
- * STAGE 2 status: AudioTrack playback is real. OpusDecoder is real via
- * MediaCodec audio/opus (with PCM passthrough fallback if creation fails).
- * Jitter handling is a simple bounded FIFO — see [JitterBuffer].
+ * STAGE 2 status: AudioTrack + MediaCodec decode are real. Jitter buffer
+ * is ts-ordered with adaptive depth. Packet-loss concealment is
+ * "repeat-last-frame at attenuated volume" — cheap, audible, and good
+ * enough to mask single-frame drops at 20ms granularity.
  */
 internal class AudioPlayback(
   private val scope: CoroutineScope,
@@ -25,6 +26,7 @@ internal class AudioPlayback(
   private var track: AudioTrack? = null
   private var job: Job? = null
   private var decoder: OpusDecoder? = null
+  private var lastPcm: ShortArray? = null
 
   fun start(sampleRate: Int) {
     if (track != null) return
@@ -48,19 +50,34 @@ internal class AudioPlayback(
     job = scope.launch {
       while (true) {
         if (!kotlinx.coroutines.isActive) break
-        val frame = jitter.pop()
-        if (frame == null) {
-          delay(5)
-          continue
+
+        when (val pop = jitter.pop()) {
+          is JitterBuffer.Pop.NotReady -> {
+            delay(5)
+          }
+          is JitterBuffer.Pop.Conceal -> {
+            // Packet-loss concealment: replay the last decoded PCM at half
+            // amplitude. Quick, audible, no codec round-trip.
+            lastPcm?.let { prev ->
+              val faded = ShortArray(prev.size)
+              for (i in faded.indices) faded[i] = (prev[i].toInt() / 2).toShort()
+              track?.write(faded, 0, faded.size)
+            }
+            stats.dropped++
+          }
+          is JitterBuffer.Pop.Play -> {
+            val frame = pop.frame
+            val payload = try { Base64.decode(frame.data, Base64.NO_WRAP) } catch (_: Throwable) {
+              stats.dropped++
+              continue
+            }
+            val pcm = dec.decode(payload, sampleRate, frame.durationMs)
+            if (pcm.isEmpty()) continue // warm-up frame from MediaCodec
+            track?.write(pcm, 0, pcm.size)
+            lastPcm = pcm
+            stats.played++
+          }
         }
-        val payload = try { Base64.decode(frame.data, Base64.NO_WRAP) } catch (_: Throwable) {
-          stats.dropped++
-          continue
-        }
-        val pcm = dec.decode(payload, sampleRate, frame.durationMs)
-        if (pcm.isEmpty()) continue // warm-up frame from MediaCodec
-        track?.write(pcm, 0, pcm.size)
-        stats.played++
       }
     }
   }
@@ -73,6 +90,7 @@ internal class AudioPlayback(
     track = null
     decoder?.close()
     decoder = null
+    lastPcm = null
     jitter.clear()
   }
 }
