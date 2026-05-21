@@ -55,6 +55,7 @@ const FONT = {
   'S': '01111\n10000\n10000\n01110\n00001\n00001\n11110',
   'T': '11111\n00100\n00100\n00100\n00100\n00100\n00100',
   'U': '10001\n10001\n10001\n10001\n10001\n10001\n01110',
+  'W': '10001\n10001\n10001\n10001\n10101\n11011\n10001',
   'Y': '10001\n10001\n01010\n00100\n00100\n00100\n00100',
   '·': '00000\n00000\n00000\n00100\n00000\n00000\n00000',
   '.': '00000\n00000\n00000\n00000\n00000\n00000\n00100',
@@ -320,8 +321,8 @@ function drawWordmark(c) {
   const tag = 'MESH RADIO FOR THE MOUNTAINS';
   const tagScale = 4;
   drawText(c, tag, x, y + 7 * scale + 28, tagScale, COLORS.tx, tagScale);
-  // Mono badge bottom-left
-  const badge = 'BLUETOOTH · NO INTERNET · OFFLINE';
+  // Mono badge bottom-left — Wi-Fi mesh is the default; BLE is optional fallback.
+  const badge = 'WI-FI MESH · NO INTERNET · OFFLINE';
   drawText(c, badge, x, c.height - 60, 3, COLORS.tx2, 3);
   // Hairline accent above the badge
   fillRect(c, x, c.height - 80, textWidth(badge, 3, 3), 2, COLORS.signal3);

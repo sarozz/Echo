@@ -22,6 +22,8 @@ import type {
 import type { CapturedFrame, IncomingFrame } from '../../modules/echo-audio/EchoAudio.types';
 import type { Subscription } from 'expo-modules-core';
 
+type BackendPref = 'auto' | 'nearby' | 'multipeer' | 'ble';
+
 interface NativeMeshModule {
   start(opts: { selfSenderId: string; selfName: string; prefer?: string[] }): Promise<void>;
   stop(): Promise<void>;
@@ -67,6 +69,7 @@ export class NativeTransport implements MeshTransport {
   private subs: Subscription[] = [];
   private selfSenderId: string;
   private selfName: string;
+  private backendPref: BackendPref;
   private currentGroup = 'main';
   private currentVoiceGroup: string | null = null;
 
@@ -81,11 +84,29 @@ export class NativeTransport implements MeshTransport {
   };
   private lastVoice: VoiceActivity = { active: false };
 
-  constructor(self: { senderId: string; name: string }) {
+  constructor(self: { senderId: string; name: string; backendPref?: BackendPref }) {
     this.selfSenderId = self.senderId;
     this.selfName = self.name;
+    this.backendPref = self.backendPref ?? 'auto';
     this.mesh = require('../../modules/echo-mesh') as NativeMeshModule;
     this.audio = require('../../modules/echo-audio') as NativeAudioModule;
+  }
+
+  /**
+   * Backend preference order based on the user's setting. BLE is deliberately
+   * excluded from 'auto' — its outdoor range (~10-30m line-of-sight) is too
+   * short for the trekking / riding use case, and falling back to it would
+   * fragment the group silently. Users who need cross-platform interop can
+   * explicitly opt in via Settings → Preferred Backend → BLE.
+   */
+  private preferOrder(): string[] {
+    switch (this.backendPref) {
+      case 'nearby':    return ['nearby'];
+      case 'multipeer': return ['multipeer'];
+      case 'ble':       return ['ble'];
+      case 'auto':
+      default:          return ['nearby', 'multipeer'];
+    }
   }
 
   start(): void {
@@ -116,7 +137,7 @@ export class NativeTransport implements MeshTransport {
     void this.mesh.start({
       selfSenderId: this.selfSenderId,
       selfName: this.selfName,
-      prefer: ['nearby', 'multipeer', 'ble'],
+      prefer: this.preferOrder(),
     });
   }
 

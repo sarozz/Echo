@@ -67,10 +67,23 @@ guard, and a store submission kit.
 - Real-device captures are documented in `store/README.md` for the
   ongoing store-page lifecycle.
 
+## Transport selection (Stage 4 revision)
+
+BLE was originally listed alongside Nearby Connections and MultipeerConnectivity in the Stage 1 spec, but its outdoor range (~10-30 m line-of-sight) is too short for the trekking and motorcycle-convoy use cases this app is built for. The native code remains as an opt-in fallback for emergencies, but:
+
+- `identity.backendPref` defaults to `auto`.
+- `auto` resolves to `prefer = ['nearby', 'multipeer']` — **no BLE by default**.
+- BLE is selected only when the user explicitly picks "BLE FALLBACK · SHORT RANGE ~30M" in Settings → Preferred Backend.
+- Same-platform mesh works out of the box: Android↔Android via Nearby Connections (Wi-Fi-mediated, ~100-200 m); iOS↔iOS via MultipeerConnectivity (Wi-Fi peer-to-peer, similar range).
+- Android↔iOS interop is the open trade-off — only possible today by opting both sides into BLE, with the range cost. A future Wi-Fi hotspot pattern (one phone hosts an AP that the others join) would solve this without BLE.
+
 ## What's still TODO
 
 - iOS Opus codec — Stage 2 documented the libopus pod vs. AudioConverter
   trade-off; still not wired.
+- Cross-platform interop without BLE — Wi-Fi hotspot pattern is the
+  candidate; needs UI for picking a host and acknowledging that hosting
+  costs the host's cellular data.
 - BLE chunking for VOICE frames over MTU — current cap is ~500 bytes,
   fine for TEXT/SOS, voice fragments need reassembly.
 - Real-device build / on-device QA — none of the Stage 2-4 native code

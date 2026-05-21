@@ -4,7 +4,7 @@
 Group radio that needs no signal
 
 ## Short description (80 chars, Play Store)
-Offline mesh messenger for trekkers and riders — no cell, no Wi-Fi, no servers.
+Offline Wi-Fi mesh messenger for trekkers and riders — no cell, no servers.
 
 ## Promo text (170 chars)
 Stay in touch with your trekking or riding group when there's no signal. Echo turns the phones in your group into a self-organising radio network — text, voice, SOS.
@@ -13,7 +13,7 @@ Stay in touch with your trekking or riding group when there's no signal. Echo tu
 
 There's no cell tower at 4,500 metres. There's nothing on the wrong side of a mountain pass. There's no Wi-Fi when you're on the move. Echo doesn't need any of that.
 
-Echo turns the phones in your group into a peer-to-peer radio network. Messages, voice, and SOS travel directly between phones over Bluetooth and Wi-Fi Direct, or hop between phones in your group to reach someone out of direct range. No servers, no internet, no SIM.
+Echo turns the phones in your group into a peer-to-peer Wi-Fi mesh. Messages, voice, and SOS travel directly between phones over short-range Wi-Fi — Google Nearby Connections on Android, MultipeerConnectivity on iOS — or hop between phones in your group to reach someone out of direct range. No servers, no internet, no SIM.
 
 Built for:
 • Trekkers on multi-day routes in the Annapurnas, Langtang, Everest region
@@ -43,7 +43,7 @@ Power:
 Echo is in active development. Field reports welcome at the project page.
 
 ## Keywords (Apple, 100 chars total)
-mesh, offline, trekking, bluetooth, walkie talkie, sos, ptt, nepal, hiking, motorcycle
+mesh, offline, trekking, wifi, walkie talkie, sos, ptt, nepal, hiking, motorcycle
 
 ## What's New (release notes seed)
 First public release of Echo:

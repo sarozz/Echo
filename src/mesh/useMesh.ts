@@ -39,7 +39,11 @@ function pickTransport(id: Identity): MeshTransport {
 
   try {
     const mod = require('./NativeTransport') as typeof import('./NativeTransport');
-    return new mod.NativeTransport({ senderId: id.senderId, name: id.name });
+    return new mod.NativeTransport({
+      senderId: id.senderId,
+      name: id.name,
+      backendPref: id.backendPref,
+    });
   } catch (e) {
     if (__DEV__) {
       console.warn('[echo] NativeTransport unavailable, falling back to mock:', e);
