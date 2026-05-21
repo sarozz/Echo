@@ -52,7 +52,8 @@ Each module ships:
 | `EchoAudio` mic capture (both OS)    | ✅ Real (`AudioRecord` / `AVAudioEngine`)                |
 | `EchoAudio` playback (both OS)       | ✅ Real (`AudioTrack` / `AVAudioPlayerNode`)             |
 | `EchoAudio` RMS VAD                  | ✅ Real                                                 |
-| `EchoAudio` Opus codec               | 🟡 Passthrough PCM — TODO(stage-2) bind libopus         |
+| `EchoAudio` Opus codec (Android)     | ✅ Real — MediaCodec audio/opus on API 29+, PCM fallback on 26-28 |
+| `EchoAudio` Opus codec (iOS)         | 🟡 Passthrough — TODO bind libopus (recommended) or AudioConverter on iOS 17+ |
 | `EchoAudio` jitter buffer            | 🟡 FIFO — TODO(stage-2) ts-sort + adaptive depth        |
 
 Every TODO is tagged `TODO(stage-2)` in source so they can be located with grep.
@@ -126,7 +127,7 @@ The transport-selection preference order in `EchoMeshModule.start` controls this
 2. ~~Fill in the MultipeerConnectivity MCSession delegate on iOS.~~ ✅ Done — iOS↔iOS text + SOS over Multipeer with hop relay and dedup. `Frame.swift` mirrors `Frame.kt`.
 3. ~~Fill in the BLE GATT advertise/scan/subscribe/write loop on both platforms.~~ ✅ Done — symmetric central+peripheral pattern on both sides, TEXT/SOS/HELLO over write characteristic, peer table keyed by senderId. Voice chunking for BLE MTU is still TODO.
 4. ~~Wire mesh ↔ audio bridge so VOICE frames actually fan out.~~ ✅ Done — mesh module exposes `relayVoiceFrame(groupId, dataB64)` and emits `onVoiceFrame`; JS routes audio.onCapturedFrame → mesh.relayVoiceFrame, and mesh.onVoiceFrame → audio.pushIncomingFrame. Bridge crosses native via JS for now; a true cross-module native singleton is a perf optimization for later.
-5. Replace the Opus passthrough with a real binding.
+5. ~~Replace the Opus passthrough with a real binding.~~ ✅ Android done — MediaCodec audio/opus replaces the passthrough on API 29+; older devices keep PCM passthrough until libopus is bundled. iOS still passthrough — recommend libopus pod (see `ios/Opus.swift` header).
 6. Replace the FIFO jitter buffer with a ts-sorted variant + PLC.
 7. Add ACK + retransmit for TEXT and SOS frames (so the UI can show real "delivered/N" status).
 8. Plug `MeshForegroundService` start/stop into module lifecycle.

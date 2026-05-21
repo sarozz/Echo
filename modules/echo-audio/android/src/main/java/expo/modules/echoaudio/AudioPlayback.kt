@@ -13,8 +13,9 @@ import kotlinx.coroutines.launch
 /**
  * JitterBuffer → Opus decode → AudioTrack.
  *
- * STAGE 2 status: AudioTrack playback is real. OpusDecoder is stubbed (passes
- * PCM through). Jitter handling is a simple bounded FIFO — see [JitterBuffer].
+ * STAGE 2 status: AudioTrack playback is real. OpusDecoder is real via
+ * MediaCodec audio/opus (with PCM passthrough fallback if creation fails).
+ * Jitter handling is a simple bounded FIFO — see [JitterBuffer].
  */
 internal class AudioPlayback(
   private val scope: CoroutineScope,
@@ -23,10 +24,11 @@ internal class AudioPlayback(
 ) {
   private var track: AudioTrack? = null
   private var job: Job? = null
-  private val decoder = OpusDecoder()
+  private var decoder: OpusDecoder? = null
 
   fun start(sampleRate: Int) {
     if (track != null) return
+    val dec = OpusDecoder(sampleRate = sampleRate).also { decoder = it }
 
     val attrs = AudioAttributes.Builder()
       .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -55,7 +57,8 @@ internal class AudioPlayback(
           stats.dropped++
           continue
         }
-        val pcm = decoder.decode(payload, sampleRate, frame.durationMs)
+        val pcm = dec.decode(payload, sampleRate, frame.durationMs)
+        if (pcm.isEmpty()) continue // warm-up frame from MediaCodec
         track?.write(pcm, 0, pcm.size)
         stats.played++
       }
@@ -68,6 +71,8 @@ internal class AudioPlayback(
     try { track?.stop() } catch (_: Throwable) {}
     try { track?.release() } catch (_: Throwable) {}
     track = null
+    decoder?.close()
+    decoder = null
     jitter.clear()
   }
 }

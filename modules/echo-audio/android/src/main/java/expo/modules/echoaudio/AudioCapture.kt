@@ -13,8 +13,9 @@ import kotlin.math.sqrt
 /**
  * Mic → 20ms PCM frame → (VAD gate) → Opus encode → onCapturedFrame.
  *
- * STAGE 2 status: capture loop + RMS VAD are real. Opus encoder is stubbed
- * (passes PCM through). Replace [OpusEncoder] with a real binding.
+ * STAGE 2 status: capture loop + RMS VAD are real. Opus encoder is real on
+ * API 29+ (MediaCodec audio/opus) and falls back to PCM passthrough on
+ * older devices.
  */
 internal class AudioCapture(
   private val scope: CoroutineScope,
@@ -22,12 +23,13 @@ internal class AudioCapture(
   private val onTalker: (active: Boolean) -> Unit,
 ) {
   private var job: Job? = null
-  private val encoder = OpusEncoder()
+  private var encoder: OpusEncoder? = null
   private var voiceActive: Boolean = false
 
   fun start(mode: String, vadThreshold: Float, sampleRate: Int) {
     if (job != null) return
     val frameDurMs = 20
+    val enc = OpusEncoder(sampleRate = sampleRate).also { encoder = it }
     val frameSamples = sampleRate * frameDurMs / 1000
     val minBuf = AudioRecord.getMinBufferSize(
       sampleRate,
@@ -79,7 +81,8 @@ internal class AudioCapture(
           }
           if (!shouldSend) continue
 
-          val opus = encoder.encode(pcm, read)
+          val opus = enc.encode(pcm, read)
+          if (opus.isEmpty()) continue // warm-up frame from MediaCodec; drop
           onFrame(
             Base64.encodeToString(opus, Base64.NO_WRAP),
             System.currentTimeMillis(),
@@ -90,6 +93,8 @@ internal class AudioCapture(
       } finally {
         try { record.stop() } catch (_: Throwable) {}
         try { record.release() } catch (_: Throwable) {}
+        enc.close()
+        encoder = null
       }
     }
   }
