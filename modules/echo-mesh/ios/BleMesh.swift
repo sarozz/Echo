@@ -37,6 +37,9 @@ final class BleMesh: NSObject, MeshTransport {
 
   private var seq: UInt32 = 1
   private let seen = SeenSet(capacity: 512)
+  private let pending = PendingTable()
+  private static let retryMs: TimeInterval = 3.0
+  private static let maxAttempts = 2
 
   private var started = false
   private var pendingAdvertise = false
@@ -102,7 +105,15 @@ final class BleMesh: NSObject, MeshTransport {
     )
     _ = seen.add(messageKey(frame))
     let n = broadcastFrame(frame)
-    emit("onMessage", outboundEventMap(jsId: jsId, frame: frame, body: body, status: n == 0 ? "queued" : "sent", delivered: n))
+    if n > 0 {
+      let entry = PendingTable.Entry(
+        jsId: jsId, groupId: frame.groupId, body: body,
+        kind: frame.kind, frame: frame, expectedAcks: peers.count
+      )
+      pending.put(frame.messageId, entry)
+      scheduleBleRetransmit(entry)
+    }
+    emit("onMessage", outboundEventMap(jsId: jsId, frame: frame, body: body, status: n == 0 ? "queued" : "sent", delivered: 0))
     return jsId
   }
 
@@ -148,19 +159,15 @@ final class BleMesh: NSObject, MeshTransport {
     )
     _ = seen.add(messageKey(frame))
     let n = broadcastFrame(frame)
-    emit("onMessage", [
-      "id": jsId,
-      "groupId": frame.groupId,
-      "senderId": selfIdentity.senderId,
-      "senderName": selfIdentity.name,
-      "kind": "sos",
-      "body": body,
-      "ts": Date().timeIntervalSince1970 * 1000,
-      "mine": true,
-      "status": n == 0 ? "queued" : "delivered",
-      "peerCount": peers.count,
-      "deliveredCount": n,
-    ])
+    if n > 0 {
+      let entry = PendingTable.Entry(
+        jsId: jsId, groupId: frame.groupId, body: body,
+        kind: frame.kind, frame: frame, expectedAcks: peers.count
+      )
+      pending.put(frame.messageId, entry)
+      scheduleBleRetransmit(entry)
+    }
+    emit("onMessage", outboundEventMap(jsId: jsId, frame: frame, body: body, status: n == 0 ? "queued" : "sent", delivered: 0))
     return jsId
   }
 
@@ -198,6 +205,7 @@ final class BleMesh: NSObject, MeshTransport {
 
     case Frame.KIND_TEXT, Frame.KIND_SOS:
       emit("onMessage", incomingEventMap(frame: frame))
+      sendAck(fromPeripheralId: fromPeripheralId, ackTarget: frame)
       if let id = fromPeripheralId {
         relayFrame(frame, exceptPeripheralId: id)
       } else {
@@ -217,8 +225,58 @@ final class BleMesh: NSObject, MeshTransport {
         relayFrame(frame, exceptPeripheralId: id)
       }
 
+    case Frame.KIND_ACK:
+      guard let target = Frame.parseAck(frame.payload) else { break }
+      guard let entry = pending.ack(target, by: frame.senderId) else { break }
+      let done = entry.ackedBy.count >= entry.expectedAcks
+      emit("onMessage", outboundEventMap(
+        jsId: entry.jsId,
+        frame: entry.frame,
+        body: entry.body,
+        status: done ? "delivered" : "sent",
+        delivered: entry.ackedBy.count
+      ))
+      if done { _ = pending.remove(target) }
+
     default:
       break
+    }
+  }
+
+  /// Sends a direct ACK back to the sender via the outbound link, if known.
+  private func sendAck(fromPeripheralId: UUID?, ackTarget: Frame) {
+    let ack = Frame(
+      kind: Frame.KIND_ACK,
+      hopCount: 0,
+      senderId: selfIdentity.senderId,
+      groupId: ackTarget.groupId,
+      messageId: nextSeq(),
+      timestamp: UInt32(Date().timeIntervalSince1970),
+      payload: Frame.ackPayload(ackTarget.messageId)
+    )
+    let bytes = ack.encode()
+    if let id = fromPeripheralId, let link = outboundPeripherals[id] {
+      _ = link.write(bytes: bytes)
+    } else {
+      // Came via our peripheral with no outbound mapping; broadcast and let
+      // dedup at the sender catch duplicates.
+      for (_, link) in outboundPeripherals { _ = link.write(bytes: bytes) }
+    }
+  }
+
+  /// Schedule a single retransmit after retryMs if not all peers have ACKed.
+  private func scheduleBleRetransmit(_ entry: PendingTable.Entry) {
+    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + BleMesh.retryMs) { [weak self] in
+      guard let self = self else { return }
+      guard let current = self.pending.get(entry.frame.messageId) else { return }
+      if current.ackedBy.count >= current.expectedAcks { return }
+      if current.attempt >= BleMesh.maxAttempts { return }
+      current.attempt += 1
+      let bytes = current.frame.encode()
+      for (_, link) in self.outboundPeripherals {
+        if let sid = link.peerSenderId, current.ackedBy.contains(sid) { continue }
+        _ = link.write(bytes: bytes)
+      }
     }
   }
 

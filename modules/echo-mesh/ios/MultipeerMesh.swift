@@ -32,6 +32,7 @@ final class MultipeerMesh: NSObject, MeshTransport {
   private var peers: [String: PeerState] = [:]
   private var seq: UInt32 = 1
   private let seen = SeenSet(capacity: 512)
+  private let pending = PendingTable()
   private let queue = DispatchQueue(label: "echo.multipeer", qos: .userInitiated)
   private let log = OSLog(subsystem: "app.echo.prototype", category: "Multipeer")
 
@@ -99,7 +100,13 @@ final class MultipeerMesh: NSObject, MeshTransport {
     )
     _ = seen.add(messageKey(frame))
     let n = broadcastFrame(frame)
-    emit("onMessage", outboundEventMap(jsId: jsId, frame: frame, body: body, status: n == 0 ? "queued" : "sent"))
+    if n > 0 {
+      pending.put(frame.messageId, PendingTable.Entry(
+        jsId: jsId, groupId: frame.groupId, body: body,
+        kind: frame.kind, frame: frame, expectedAcks: peers.count
+      ))
+    }
+    emit("onMessage", outboundEventMap(jsId: jsId, frame: frame, body: body, status: n == 0 ? "queued" : "sent", delivered: 0))
     return jsId
   }
 
@@ -145,19 +152,13 @@ final class MultipeerMesh: NSObject, MeshTransport {
     )
     _ = seen.add(messageKey(frame))
     let n = broadcastFrame(frame)
-    emit("onMessage", [
-      "id": jsId,
-      "groupId": frame.groupId,
-      "senderId": selfIdentity.senderId,
-      "senderName": selfIdentity.name,
-      "kind": "sos",
-      "body": body,
-      "ts": Date().timeIntervalSince1970 * 1000,
-      "mine": true,
-      "status": n == 0 ? "queued" : "delivered",
-      "peerCount": peers.count,
-      "deliveredCount": n,
-    ])
+    if n > 0 {
+      pending.put(frame.messageId, PendingTable.Entry(
+        jsId: jsId, groupId: frame.groupId, body: body,
+        kind: frame.kind, frame: frame, expectedAcks: peers.count
+      ))
+    }
+    emit("onMessage", outboundEventMap(jsId: jsId, frame: frame, body: body, status: n == 0 ? "queued" : "sent", delivered: 0))
     return jsId
   }
 
@@ -187,6 +188,20 @@ final class MultipeerMesh: NSObject, MeshTransport {
     } catch {
       os_log("send to %{public}@ failed: %{public}@", log: log, type: .error, peer.displayName, "\(error)")
     }
+  }
+
+  /// Sends an ACK back to the originator (not relayed).
+  private func sendAck(to peer: MCPeerID, ackTarget: Frame) {
+    let ack = Frame(
+      kind: Frame.KIND_ACK,
+      hopCount: 0,
+      senderId: selfIdentity.senderId,
+      groupId: ackTarget.groupId,
+      messageId: nextSeq(),
+      timestamp: UInt32(Date().timeIntervalSince1970),
+      payload: Frame.ackPayload(ackTarget.messageId)
+    )
+    sendFrame(ack, to: peer)
   }
 
   private func relayFrame(_ frame: Frame, exceptPeer: MCPeerID) {
@@ -233,6 +248,7 @@ final class MultipeerMesh: NSObject, MeshTransport {
       applyHello(peer: peer, frame: frame)
     case Frame.KIND_TEXT, Frame.KIND_SOS:
       emit("onMessage", incomingEventMap(frame: frame))
+      sendAck(to: peer, ackTarget: frame)
       relayFrame(frame, exceptPeer: peer)
     case Frame.KIND_VOICE:
       emit("onVoiceFrame", [
@@ -243,8 +259,17 @@ final class MultipeerMesh: NSObject, MeshTransport {
       ])
       relayFrame(frame, exceptPeer: peer)
     case Frame.KIND_ACK:
-      // TODO(stage-2): bump delivery state on matching mine messages.
-      break
+      guard let target = Frame.parseAck(frame.payload) else { break }
+      guard let entry = pending.ack(target, by: frame.senderId) else { break }
+      let done = entry.ackedBy.count >= entry.expectedAcks
+      emit("onMessage", outboundEventMap(
+        jsId: entry.jsId,
+        frame: entry.frame,
+        body: entry.body,
+        status: done ? "delivered" : "sent",
+        delivered: entry.ackedBy.count
+      ))
+      if done { _ = pending.remove(target) }
     case Frame.KIND_PEER_ADV:
       // TODO(stage-2): multi-hop peer advertisement.
       break
@@ -292,7 +317,7 @@ final class MultipeerMesh: NSObject, MeshTransport {
     ])
   }
 
-  private func outboundEventMap(jsId: String, frame: Frame, body: String, status: String) -> [String: Any] {
+  private func outboundEventMap(jsId: String, frame: Frame, body: String, status: String, delivered: Int) -> [String: Any] {
     return [
       "id": jsId,
       "groupId": frame.groupId,
@@ -304,7 +329,7 @@ final class MultipeerMesh: NSObject, MeshTransport {
       "mine": true,
       "status": status,
       "peerCount": peers.count,
-      "deliveredCount": (status == "delivered" || status == "sent") ? peers.count : 0,
+      "deliveredCount": delivered,
     ]
   }
 

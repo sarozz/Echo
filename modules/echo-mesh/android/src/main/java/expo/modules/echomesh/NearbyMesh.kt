@@ -54,6 +54,8 @@ internal class NearbyMesh(
   private val seq = AtomicLong(1)
   /** dedup set keyed by "$senderId:$messageId" */
   private val seen = SeenSet(capacity = 512)
+  /** in-flight outbound messages awaiting peer ACKs */
+  private val pending = PendingTable()
 
   private var started = false
   private lateinit var self: SelfIdentity
@@ -130,7 +132,13 @@ internal class NearbyMesh(
     )
     seen.add(messageKey(frame))
     val n = broadcastFrame(frame)
-    emit("onMessage", outboundEventMap(jsId, frame, body, status = if (n == 0) "queued" else "sent"))
+    if (n > 0) {
+      pending.put(frame.messageId, PendingTable.Entry(
+        jsId = jsId, groupId = frame.groupId, body = body,
+        kind = frame.kind, frame = frame, expectedAcks = peers.size,
+      ))
+    }
+    emit("onMessage", outboundEventMap(jsId, frame, body, status = if (n == 0) "queued" else "sent", delivered = 0))
     return jsId
   }
 
@@ -181,19 +189,13 @@ internal class NearbyMesh(
     )
     seen.add(messageKey(frame))
     val n = broadcastFrame(frame)
-    emit("onMessage", mapOf(
-      "id" to jsId,
-      "groupId" to frame.groupId,
-      "senderId" to self.senderId,
-      "senderName" to self.name,
-      "kind" to "sos",
-      "body" to body,
-      "ts" to System.currentTimeMillis(),
-      "mine" to true,
-      "status" to if (n == 0) "queued" else "delivered",
-      "peerCount" to peers.size,
-      "deliveredCount" to n,
-    ))
+    if (n > 0) {
+      pending.put(frame.messageId, PendingTable.Entry(
+        jsId = jsId, groupId = frame.groupId, body = body,
+        kind = frame.kind, frame = frame, expectedAcks = peers.size,
+      ))
+    }
+    emit("onMessage", outboundEventMap(jsId, frame, body, status = if (n == 0) "queued" else "sent", delivered = 0))
     return jsId
   }
 
@@ -291,6 +293,7 @@ internal class NearbyMesh(
 
       Frame.KIND_TEXT, Frame.KIND_SOS -> {
         emit("onMessage", incomingEventMap(frame))
+        sendAck(fromEndpoint, frame)
         relayFrame(frame, exceptEndpoint = fromEndpoint)
       }
 
@@ -307,7 +310,16 @@ internal class NearbyMesh(
       Frame.KIND_PEER_ADV -> applyPeerAdv(frame)
 
       Frame.KIND_ACK -> {
-        // TODO(stage-2): match ack-target message-id and bump delivery state.
+        val target = Frame.parseAck(frame.payload) ?: return
+        val entry = pending.ack(target, ackingSenderId = frame.senderId) ?: return
+        emit("onMessage", outboundEventMap(
+          jsId = entry.jsId,
+          frame = entry.frame,
+          body = entry.body,
+          status = if (entry.ackedBy.size >= entry.expectedAcks) "delivered" else "sent",
+          delivered = entry.ackedBy.size,
+        ))
+        if (entry.ackedBy.size >= entry.expectedAcks) pending.remove(target)
       }
     }
   }
@@ -357,6 +369,20 @@ internal class NearbyMesh(
   private fun sendFrameTo(endpointId: String, frame: Frame) {
     client.sendPayload(endpointId, Payload.fromBytes(frame.encode()))
       .addOnFailureListener { e -> Log.w(TAG, "send to $endpointId failed", e) }
+  }
+
+  /** Sends a direct ACK back to the originator (not relayed). */
+  private fun sendAck(toEndpoint: String, ackTarget: Frame) {
+    val ack = Frame(
+      kind = Frame.KIND_ACK,
+      hopCount = 0,
+      senderId = self.senderId,
+      groupId = ackTarget.groupId,
+      messageId = seq.getAndIncrement(),
+      timestamp = System.currentTimeMillis() / 1000L,
+      payload = Frame.ackPayload(ackTarget.messageId),
+    )
+    sendFrameTo(toEndpoint, ack)
   }
 
   private fun makeHelloFrame(): Frame {
@@ -412,20 +438,25 @@ internal class NearbyMesh(
     ))
   }
 
-  private fun outboundEventMap(jsId: String, frame: Frame, body: String, status: String): Map<String, Any?> =
-    mapOf(
-      "id" to jsId,
-      "groupId" to frame.groupId,
-      "senderId" to self.senderId,
-      "senderName" to self.name,
-      "kind" to Frame.kindWire(frame.kind),
-      "body" to body,
-      "ts" to System.currentTimeMillis(),
-      "mine" to true,
-      "status" to status,
-      "peerCount" to peers.size,
-      "deliveredCount" to if (status == "delivered" || status == "sent") peers.size else 0,
-    )
+  private fun outboundEventMap(
+    jsId: String,
+    frame: Frame,
+    body: String,
+    status: String,
+    delivered: Int = 0,
+  ): Map<String, Any?> = mapOf(
+    "id" to jsId,
+    "groupId" to frame.groupId,
+    "senderId" to self.senderId,
+    "senderName" to self.name,
+    "kind" to Frame.kindWire(frame.kind),
+    "body" to body,
+    "ts" to System.currentTimeMillis(),
+    "mine" to true,
+    "status" to status,
+    "peerCount" to peers.size,
+    "deliveredCount" to delivered,
+  )
 
   private fun incomingEventMap(frame: Frame): Map<String, Any?> {
     val sender = peers.values.firstOrNull { it.senderId == frame.senderId }

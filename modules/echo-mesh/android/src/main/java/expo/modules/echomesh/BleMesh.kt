@@ -62,6 +62,8 @@ internal class BleMesh(
     val CHAR_NOTIFY_UUID: UUID = UUID.fromString("e3000003-1c01-7e57-b1ad-1ea5deadbeef")
     private const val TAG = "EchoBleMesh"
     private const val DESIRED_MTU = 512
+    private const val RETRY_MS = 3_000L
+    private const val MAX_ATTEMPTS = 2  // initial + 1 retry
   }
 
   // Outbound connections — devices we connected to as central.
@@ -75,6 +77,7 @@ internal class BleMesh(
 
   private val seq = AtomicLong(1)
   private val seen = SeenSet(capacity = 512)
+  private val pending = PendingTable()
 
   private var gattServer: BluetoothGattServer? = null
   private var advertiser: BluetoothLeAdvertiser? = null
@@ -139,19 +142,15 @@ internal class BleMesh(
     )
     seen.add(messageKey(frame))
     val n = broadcastFrame(frame)
-    emit("onMessage", mapOf(
-      "id" to jsId,
-      "groupId" to frame.groupId,
-      "senderId" to self.senderId,
-      "senderName" to self.name,
-      "kind" to "text",
-      "body" to body,
-      "ts" to System.currentTimeMillis(),
-      "mine" to true,
-      "status" to if (n == 0) "queued" else "sent",
-      "peerCount" to peers.size,
-      "deliveredCount" to n,
-    ))
+    if (n > 0) {
+      val entry = PendingTable.Entry(
+        jsId = jsId, groupId = frame.groupId, body = body,
+        kind = frame.kind, frame = frame, expectedAcks = peers.size,
+      )
+      pending.put(frame.messageId, entry)
+      scheduleBleRetransmit(entry)
+    }
+    emit("onMessage", outboundEventMapBle(jsId, frame, body, if (n == 0) "queued" else "sent", delivered = 0))
     return jsId
   }
 
@@ -203,19 +202,15 @@ internal class BleMesh(
     )
     seen.add(messageKey(frame))
     val n = broadcastFrame(frame)
-    emit("onMessage", mapOf(
-      "id" to jsId,
-      "groupId" to frame.groupId,
-      "senderId" to self.senderId,
-      "senderName" to self.name,
-      "kind" to "sos",
-      "body" to body,
-      "ts" to System.currentTimeMillis(),
-      "mine" to true,
-      "status" to if (n == 0) "queued" else "delivered",
-      "peerCount" to peers.size,
-      "deliveredCount" to n,
-    ))
+    if (n > 0) {
+      val entry = PendingTable.Entry(
+        jsId = jsId, groupId = frame.groupId, body = body,
+        kind = frame.kind, frame = frame, expectedAcks = peers.size,
+      )
+      pending.put(frame.messageId, entry)
+      scheduleBleRetransmit(entry)
+    }
+    emit("onMessage", outboundEventMapBle(jsId, frame, body, if (n == 0) "queued" else "sent", delivered = 0))
     return jsId
   }
 
@@ -441,6 +436,7 @@ internal class BleMesh(
     }
 
     fun setPeerSenderId(sid: String) { peerSenderId = sid }
+    fun peerSenderId(): String? = peerSenderId
 
     fun close() {
       try { gatt?.disconnect() } catch (_: Throwable) {}
@@ -461,6 +457,7 @@ internal class BleMesh(
 
       Frame.KIND_TEXT, Frame.KIND_SOS -> {
         emit("onMessage", incomingEventMap(frame))
+        sendAck(toAddress = fromAddress, ackTarget = frame)
         relayFrame(frame, exceptAddress = fromAddress)
       }
 
@@ -475,7 +472,16 @@ internal class BleMesh(
       }
 
       Frame.KIND_ACK -> {
-        // TODO(stage-2): mark mine messages as delivered.
+        val target = Frame.parseAck(frame.payload) ?: return
+        val entry = pending.ack(target, ackingSenderId = frame.senderId) ?: return
+        emit("onMessage", outboundEventMapBle(
+          jsId = entry.jsId,
+          frame = entry.frame,
+          body = entry.body,
+          status = if (entry.ackedBy.size >= entry.expectedAcks) "delivered" else "sent",
+          delivered = entry.ackedBy.size,
+        ))
+        if (entry.ackedBy.size >= entry.expectedAcks) pending.remove(target)
       }
 
       Frame.KIND_PEER_ADV -> {
@@ -525,6 +531,44 @@ internal class BleMesh(
     return n
   }
 
+  /** Sends a direct ACK back to the sender via the central link we know about. */
+  private fun sendAck(toAddress: String, ackTarget: Frame) {
+    val link = centrals[toAddress] ?: return
+    val ack = Frame(
+      kind = Frame.KIND_ACK,
+      hopCount = 0,
+      senderId = self.senderId,
+      groupId = ackTarget.groupId,
+      messageId = seq.getAndIncrement(),
+      timestamp = System.currentTimeMillis() / 1000L,
+      payload = Frame.ackPayload(ackTarget.messageId),
+    )
+    link.writeFrame(ack)
+  }
+
+  /** Schedule a single retransmit after RETRY_MS if not all peers have ACKed. */
+  private fun scheduleBleRetransmit(entry: PendingTable.Entry) {
+    scope.launch {
+      kotlinx.coroutines.delay(RETRY_MS)
+      val current = pending.get(entry.frame.messageId) ?: return@launch
+      if (current.ackedBy.size >= current.expectedAcks) return@launch
+      if (current.attempt >= MAX_ATTEMPTS) return@launch
+      current.attempt += 1
+      val missing = peers.values
+        .filter { it.senderId !in current.ackedBy }
+        .map { it.senderId }
+        .toSet()
+      if (missing.isEmpty()) return@launch
+      // Re-broadcast only to peers that haven't acked. Bumps hop count so
+      // dedup at the receiver still kicks in (they'd ignore an identical
+      // resend of a frame they've already seen anyway).
+      for ((_, link) in centrals) {
+        val sid = link.peerSenderId() ?: continue
+        if (sid in missing) link.writeFrame(current.frame)
+      }
+    }
+  }
+
   // --- HELLO + helpers --------------------------------------------------
 
   private fun makeHelloFrame(): Frame {
@@ -568,6 +612,26 @@ internal class BleMesh(
       "backend" to "ble",
     ))
   }
+
+  private fun outboundEventMapBle(
+    jsId: String,
+    frame: Frame,
+    body: String,
+    status: String,
+    delivered: Int,
+  ): Map<String, Any?> = mapOf(
+    "id" to jsId,
+    "groupId" to frame.groupId,
+    "senderId" to self.senderId,
+    "senderName" to self.name,
+    "kind" to Frame.kindWire(frame.kind),
+    "body" to body,
+    "ts" to System.currentTimeMillis(),
+    "mine" to true,
+    "status" to status,
+    "peerCount" to peers.size,
+    "deliveredCount" to delivered,
+  )
 
   private fun incomingEventMap(frame: Frame): Map<String, Any?> {
     val sender = peers[frame.senderId]

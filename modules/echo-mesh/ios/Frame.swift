@@ -109,6 +109,18 @@ struct Frame {
     return String(data: payload, encoding: .utf8) ?? ""
   }
 
+  /// ACK payload = u32 LE target message id.
+  static func ackPayload(_ targetMessageId: UInt32) -> Data {
+    var d = Data(capacity: 4)
+    d.appendLE(targetMessageId)
+    return d
+  }
+
+  static func parseAck(_ payload: Data) -> UInt32? {
+    guard payload.count >= 4 else { return nil }
+    return payload.readLE32(at: payload.startIndex)
+  }
+
   static func kindWire(_ kind: UInt8) -> String {
     switch kind {
     case KIND_TEXT: return "text"
