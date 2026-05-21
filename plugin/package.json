@@ -1,0 +1,6 @@
+{
+  "name": "echo-config-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "main": "app.plugin.js"
+}
