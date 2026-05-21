@@ -19,6 +19,7 @@ import {
 } from './storeAndForward';
 import type { Identity } from '../identity/identity';
 import { LocationTracker } from '../location/locationTracker';
+import { configureNotifications, notifyIncoming } from '../notifications/notifications';
 
 /**
  * Transport selection.
@@ -178,6 +179,7 @@ export function useMeshBootstrap(): void {
     if (!started) {
       started = true;
       initStoreAndForward();
+      void configureNotifications();
       transport.start();
       const s = useMesh.getState();
       // Push every known group's secret to native up front so we can
@@ -214,6 +216,7 @@ export function useMeshBootstrap(): void {
     });
     const offMsg = transport.onMessage((m) => {
       persistMessage(m);
+      void notifyIncoming(m);
       useMesh.setState((prev) => {
         const idx = prev.messages.findIndex((x) => x.id === m.id);
         if (idx >= 0) {

@@ -66,6 +66,8 @@ const config: ExpoConfig = {
   plugins: [
     'expo-router',
     'expo-dev-client',
+    'expo-location',
+    'expo-notifications',
     [
       'expo-build-properties',
       {
