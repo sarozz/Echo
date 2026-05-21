@@ -46,8 +46,8 @@ Each module ships:
 | Wire-protocol codec (Swift)          | ✅ Real — `Frame.swift` mirrors `Frame.kt` byte-for-byte |
 | `EchoMesh` Android Nearby loop       | ✅ Real — advertise + discover + accept + payloads + HELLO + relay + dedup |
 | `EchoMesh` iOS Multipeer loop        | ✅ Real — advertise + browse + auto-accept + HELLO + relay + dedup |
-| `EchoMesh` Android BLE GATT loop     | 🟡 Skeleton — TODO(stage-2) at advertise/scan/subscribe |
-| `EchoMesh` iOS Core Bluetooth loop   | 🟡 Skeleton — TODO(stage-2) at CB delegates             |
+| `EchoMesh` Android BLE GATT loop     | ✅ Real — symmetric central+peripheral, write-based frames, HELLO, relay, dedup. Chunking is TODO. |
+| `EchoMesh` iOS Core Bluetooth loop   | ✅ Real — symmetric CBCentralManager + CBPeripheralManager, mirrors Android. Chunking is TODO. |
 | Mesh foreground service (Android)    | 🟡 Service real, trigger from module is TODO(stage-2)   |
 | `EchoAudio` mic capture (both OS)    | ✅ Real (`AudioRecord` / `AVAudioEngine`)                |
 | `EchoAudio` playback (both OS)       | ✅ Real (`AudioTrack` / `AVAudioPlayerNode`)             |
@@ -124,7 +124,7 @@ The transport-selection preference order in `EchoMeshModule.start` controls this
 
 1. ~~Fill in the Nearby Connections discovery → connection flow.~~ ✅ Done — Android↔Android text + SOS over Nearby with hop relay and dedup.
 2. ~~Fill in the MultipeerConnectivity MCSession delegate on iOS.~~ ✅ Done — iOS↔iOS text + SOS over Multipeer with hop relay and dedup. `Frame.swift` mirrors `Frame.kt`.
-3. Fill in the BLE GATT advertise/scan/subscribe/write loop on both platforms (cross-platform Android↔iOS fallback). Use the shared UUIDs in `BleMesh.{kt,swift}`.
+3. ~~Fill in the BLE GATT advertise/scan/subscribe/write loop on both platforms.~~ ✅ Done — symmetric central+peripheral pattern on both sides, TEXT/SOS/HELLO over write characteristic, peer table keyed by senderId. Voice chunking for BLE MTU is still TODO.
 4. Wire `pushIncomingFrame` calls from the mesh module to the audio module when a VOICE frame arrives — the two modules don't talk to each other natively yet. Easiest: a small shared singleton (`MeshAudioBridge`) on each platform.
 5. Replace the Opus passthrough with a real binding.
 6. Replace the FIFO jitter buffer with a ts-sorted variant + PLC.
