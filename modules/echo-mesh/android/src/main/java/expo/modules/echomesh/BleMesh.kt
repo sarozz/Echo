@@ -470,19 +470,26 @@ internal class BleMesh(
     if (frame.senderId == self.senderId) return  // our own echo
     if (!seen.add(messageKey(frame))) return     // dedup
 
-    when (frame.kind) {
-      Frame.KIND_HELLO -> applyHello(fromAddress, frame)
+    val plain = Frame.maybeDecrypt(frame)
+    if (plain == null) {
+      // Encrypted with a key we don't have — still relay for other peers.
+      relayFrame(frame, exceptAddress = fromAddress)
+      return
+    }
+
+    when (plain.kind) {
+      Frame.KIND_HELLO -> applyHello(fromAddress, plain)
 
       Frame.KIND_TEXT, Frame.KIND_SOS -> {
-        emit("onMessage", incomingEventMap(frame))
-        sendAck(toAddress = fromAddress, ackTarget = frame)
+        emit("onMessage", incomingEventMap(plain))
+        sendAck(toAddress = fromAddress, ackTarget = plain)
         relayFrame(frame, exceptAddress = fromAddress)
       }
 
       Frame.KIND_VOICE -> {
         emit("onVoiceFrame", mapOf(
-          "senderId" to frame.senderId,
-          "data" to Base64.encodeToString(frame.payload, Base64.NO_WRAP),
+          "senderId" to plain.senderId,
+          "data" to Base64.encodeToString(plain.payload, Base64.NO_WRAP),
           "ts" to System.currentTimeMillis(),
           "durationMs" to 20,
         ))
@@ -490,8 +497,8 @@ internal class BleMesh(
       }
 
       Frame.KIND_ACK -> {
-        val target = Frame.parseAck(frame.payload) ?: return
-        val entry = pending.ack(target, ackingSenderId = frame.senderId) ?: return
+        val target = Frame.parseAck(plain.payload) ?: return
+        val entry = pending.ack(target, ackingSenderId = plain.senderId) ?: return
         val map = outboundEventMapBle(
           jsId = entry.jsId,
           frame = entry.frame,
@@ -499,13 +506,13 @@ internal class BleMesh(
           status = if (entry.ackedBy.size >= entry.expectedAcks) "delivered" else "sent",
           delivered = entry.ackedBy.size,
         ).toMutableMap()
-        map["ackingSenderId"] = frame.senderId
+        map["ackingSenderId"] = plain.senderId
         emit("onMessage", map)
         if (entry.ackedBy.size >= entry.expectedAcks) pending.remove(target)
       }
 
       Frame.KIND_PEER_ADV -> {
-        // TODO(stage-2): multi-hop visibility.
+        // TODO: multi-hop visibility.
       }
     }
   }
@@ -535,6 +542,7 @@ internal class BleMesh(
 
   private fun relayFrame(frame: Frame, exceptAddress: String) {
     if (frame.hopCount >= Frame.MAX_HOPS) return
+    // Relay preserves the on-the-wire form (encrypted bytes stay encrypted).
     val bumped = frame.bumpedHop()
     for ((addr, link) in centrals) {
       if (addr == exceptAddress) continue
@@ -544,9 +552,10 @@ internal class BleMesh(
 
   private fun broadcastFrame(frame: Frame): Int {
     if (centrals.isEmpty()) return 0
+    val wire = Frame.maybeEncrypt(frame)
     var n = 0
     for ((_, link) in centrals) {
-      if (link.writeFrame(frame)) n++
+      if (link.writeFrame(wire)) n++
     }
     return n
   }
@@ -579,12 +588,12 @@ internal class BleMesh(
         .map { it.senderId }
         .toSet()
       if (missing.isEmpty()) return@launch
-      // Re-broadcast only to peers that haven't acked. Bumps hop count so
-      // dedup at the receiver still kicks in (they'd ignore an identical
-      // resend of a frame they've already seen anyway).
+      // Re-broadcast only to peers that haven't acked. Dedup at the receiver
+      // absorbs duplicates of frames they've already seen.
+      val wire = Frame.maybeEncrypt(current.frame)
       for ((_, link) in centrals) {
         val sid = link.peerSenderId() ?: continue
-        if (sid in missing) link.writeFrame(current.frame)
+        if (sid in missing) link.writeFrame(wire)
       }
     }
   }

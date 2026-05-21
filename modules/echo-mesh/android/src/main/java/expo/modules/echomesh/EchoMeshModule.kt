@@ -118,6 +118,14 @@ class EchoMeshModule : Module() {
       activeTransport()?.replay(groupId, senderId, wireMessageId.toLong(), ts.toLong(), kind, body)
     }
 
+    AsyncFunction("setGroupSecret") { groupId: String, code: String ->
+      Crypto.setSecret(groupId, code)
+    }
+
+    AsyncFunction("clearGroupSecret") { groupId: String ->
+      Crypto.clearSecret(groupId)
+    }
+
     AsyncFunction("getCurrentPeers") {
       activeTransport()?.snapshotPeers() ?: emptyList<Map<String, Any?>>()
     }

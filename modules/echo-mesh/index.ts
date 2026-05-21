@@ -22,6 +22,8 @@ const Native = requireNativeModule('EchoMesh') as {
   triggerSOS(groupId: string): Promise<string>;
   relayVoiceFrame(groupId: string, dataB64: string): Promise<void>;
   replay(groupId: string, senderId: string, wireMessageId: number, ts: number, kind: 'text' | 'sos', body: string): Promise<void>;
+  setGroupSecret(groupId: string, code: string): Promise<void>;
+  clearGroupSecret(groupId: string): Promise<void>;
   getCurrentPeers(): Promise<NativePeer[]>;
 };
 
@@ -68,6 +70,14 @@ export function replay(
   body: string,
 ): Promise<void> {
   return Native.replay(groupId, senderId, wireMessageId, ts, kind, body);
+}
+
+export function setGroupSecret(groupId: string, code: string): Promise<void> {
+  return Native.setGroupSecret(groupId, code);
+}
+
+export function clearGroupSecret(groupId: string): Promise<void> {
+  return Native.clearGroupSecret(groupId);
 }
 
 export function getCurrentPeers(): Promise<NativePeer[]> {

@@ -52,3 +52,29 @@ export const HEADER_SIZE = 24;
 
 export const SENDER_ID_BYTES = 2;
 export const GROUP_ID_BYTES = 8;
+
+/**
+ * Bit 7 of the `hopCount` byte signals an encrypted frame:
+ *   - 1 = payload is AES-GCM-256 ciphertext, prefixed by a 12-byte nonce.
+ *         Total payload length = 12 (nonce) + plaintext.length + 16 (tag).
+ *   - 0 = payload is in the clear (HELLO, ACK, PEER_ADV, or any frame sent
+ *         before a group secret is set).
+ *
+ * The low 7 bits remain the hop count (0..MAX_HOPS). Old senders never set
+ * bit 7, so old wire data still parses correctly.
+ *
+ * Group key derivation (mirrored on Android and iOS):
+ *   key = PBKDF2-HMAC-SHA256(
+ *           password = group.code,
+ *           salt     = "echo:" + group.id,
+ *           iters    = 100_000,
+ *           outBytes = 32,
+ *         )
+ */
+export const FLAG_ENCRYPTED = 0x80;
+export const HOP_MASK = 0x7f;
+export const NONCE_BYTES = 12;
+export const TAG_BYTES = 16;
+export const PBKDF2_ITERATIONS = 100_000;
+export const KEY_BYTES = 32;
+export const KDF_SALT_PREFIX = 'echo:';

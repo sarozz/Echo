@@ -123,7 +123,10 @@ export const useMesh = create<MeshStore>((set, get) => ({
   },
 
   switchGroup: (groupId) => {
-    getTransport().joinGroup(groupId);
+    const t = getTransport();
+    const code = get().groups.find((g) => g.id === groupId)?.code;
+    if (code && t.setGroupSecret) t.setGroupSecret(groupId, code);
+    t.joinGroup(groupId);
     set({ activeGroupId: groupId, messages: hydrateGroup(groupId) });
   },
 
@@ -157,11 +160,17 @@ export function useMeshBootstrap(): void {
       started = true;
       initStoreAndForward();
       transport.start();
-      const initialGroup = useMesh.getState().activeGroupId;
+      const s = useMesh.getState();
+      // Push every known group's secret to native up front so we can
+      // decrypt frames for any group we might be relaying for.
+      if (transport.setGroupSecret) {
+        for (const g of s.groups) transport.setGroupSecret(g.id, g.code);
+      }
+      const initialGroup = s.activeGroupId;
       transport.joinGroup(initialGroup);
       useMesh.setState({
         messages: hydrateGroup(initialGroup),
-        state: { ...useMesh.getState().state, mode: _identity?.modeDefault ?? 'trek' },
+        state: { ...s.state, mode: _identity?.modeDefault ?? 'trek' },
       });
     }
 

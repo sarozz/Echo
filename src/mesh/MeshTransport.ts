@@ -38,6 +38,14 @@ export interface MeshTransport {
     body: string,
   ): void;
 
+  /**
+   * Sets the AES-GCM key for `groupId` derived from the group's join code.
+   * Once set, outbound TEXT/SOS/VOICE frames for this group are encrypted
+   * and inbound frames in that group are decrypted. Optional on mock.
+   */
+  setGroupSecret?(groupId: string, code: string): void;
+  clearGroupSecret?(groupId: string): void;
+
   onPeers(cb: PeersListener): () => void;
   onMessage(cb: MessageListener): () => void;
   onState(cb: StateListener): () => void;

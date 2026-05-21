@@ -90,6 +90,14 @@ public class EchoMeshModule: Module {
       )
     }
 
+    AsyncFunction("setGroupSecret") { (groupId: String, code: String) in
+      Crypto.setSecret(groupId: groupId, code: code)
+    }
+
+    AsyncFunction("clearGroupSecret") { (groupId: String) in
+      Crypto.clearSecret(groupId: groupId)
+    }
+
     AsyncFunction("getCurrentPeers") { () -> [[String: Any]] in
       return self.activeTransport()?.snapshotPeers() ?? []
     }

@@ -192,7 +192,8 @@ final class BleMesh: NSObject, MeshTransport {
 
   @discardableResult
   private func broadcastFrame(_ frame: Frame) -> Int {
-    let bytes = frame.encode()
+    let wire = Frame.maybeEncrypt(frame)
+    let bytes = wire.encode()
     var n = 0
     for (_, link) in outboundPeripherals {
       if link.write(bytes: bytes) { n += 1 }
@@ -202,6 +203,7 @@ final class BleMesh: NSObject, MeshTransport {
 
   private func relayFrame(_ frame: Frame, exceptPeripheralId: UUID) {
     guard frame.hopCount < Frame.maxHops else { return }
+    // Relay preserves on-the-wire form (ciphertext stays ciphertext).
     let bytes = frame.bumpedHop().encode()
     for (id, link) in outboundPeripherals {
       if id == exceptPeripheralId { continue }
@@ -214,25 +216,32 @@ final class BleMesh: NSObject, MeshTransport {
     let key = messageKey(frame)
     if !seen.add(key) { return }
 
-    switch frame.kind {
+    guard let plain = Frame.maybeDecrypt(frame) else {
+      // Encrypted with a key we don't have — relay so other peers can decode.
+      if let id = fromPeripheralId {
+        relayFrame(frame, exceptPeripheralId: id)
+      }
+      return
+    }
+
+    switch plain.kind {
     case Frame.KIND_HELLO:
-      applyHello(fromPeripheralId: fromPeripheralId, frame: frame)
+      applyHello(fromPeripheralId: fromPeripheralId, frame: plain)
 
     case Frame.KIND_TEXT, Frame.KIND_SOS:
-      emit("onMessage", incomingEventMap(frame: frame))
-      sendAck(fromPeripheralId: fromPeripheralId, ackTarget: frame)
+      emit("onMessage", incomingEventMap(frame: plain))
+      sendAck(fromPeripheralId: fromPeripheralId, ackTarget: plain)
       if let id = fromPeripheralId {
         relayFrame(frame, exceptPeripheralId: id)
       } else {
-        // Came in via the GATT server side — we don't know which outbound
-        // link to skip, so relay to all.
+        // Came via our GATT server with no outbound mapping.
         broadcastFrame(frame.bumpedHop())
       }
 
     case Frame.KIND_VOICE:
       emit("onVoiceFrame", [
-        "senderId": frame.senderId,
-        "data": frame.payload.base64EncodedString(),
+        "senderId": plain.senderId,
+        "data": plain.payload.base64EncodedString(),
         "ts": Date().timeIntervalSince1970 * 1000,
         "durationMs": 20,
       ])
@@ -241,8 +250,8 @@ final class BleMesh: NSObject, MeshTransport {
       }
 
     case Frame.KIND_ACK:
-      guard let target = Frame.parseAck(frame.payload) else { break }
-      guard let entry = pending.ack(target, by: frame.senderId) else { break }
+      guard let target = Frame.parseAck(plain.payload) else { break }
+      guard let entry = pending.ack(target, by: plain.senderId) else { break }
       let done = entry.ackedBy.count >= entry.expectedAcks
       var m = outboundEventMap(
         jsId: entry.jsId,
@@ -251,7 +260,7 @@ final class BleMesh: NSObject, MeshTransport {
         status: done ? "delivered" : "sent",
         delivered: entry.ackedBy.count
       )
-      m["ackingSenderId"] = frame.senderId
+      m["ackingSenderId"] = plain.senderId
       emit("onMessage", m)
       if done { _ = pending.remove(target) }
 
@@ -289,7 +298,8 @@ final class BleMesh: NSObject, MeshTransport {
       if current.ackedBy.count >= current.expectedAcks { return }
       if current.attempt >= BleMesh.maxAttempts { return }
       current.attempt += 1
-      let bytes = current.frame.encode()
+      let wire = Frame.maybeEncrypt(current.frame)
+      let bytes = wire.encode()
       for (_, link) in self.outboundPeripherals {
         if let sid = link.peerSenderId, current.ackedBy.contains(sid) { continue }
         _ = link.write(bytes: bytes)

@@ -24,6 +24,8 @@ struct Frame {
   var messageId: UInt32
   var timestamp: UInt32
   var payload: Data
+  /// True when the payload is AES-GCM ciphertext (nonce(12) | ct | tag(16)).
+  var encrypted: Bool = false
 
   static let magic: UInt8 = 0xE0
   static let version: UInt8 = 1
@@ -32,6 +34,8 @@ struct Frame {
   static let groupIdBytes = 8
   static let maxHops = 8
   static let maxPayload = 65535
+  static let flagEncrypted: UInt8 = 0x80
+  static let hopMask: UInt8 = 0x7f
 
   static let KIND_TEXT: UInt8 = 0x01
   static let KIND_SOS: UInt8 = 0x02
@@ -49,7 +53,8 @@ struct Frame {
     d.append(Frame.magic)
     d.append(Frame.version)
     d.append(kind)
-    d.append(UInt8(min(255, max(0, hopCount))))
+    let hopByte = UInt8(min(Int(Frame.hopMask), max(0, hopCount))) | (encrypted ? Frame.flagEncrypted : 0)
+    d.append(hopByte)
 
     if let sid = senderId.data(using: .ascii) { d.append(sid) } else { d.append(contentsOf: [0, 0]) }
     let gid = groupId.prefix(Frame.groupIdBytes).data(using: .ascii) ?? Data()
@@ -75,7 +80,9 @@ struct Frame {
     guard bytes[base] == magic, bytes[base + 1] == version else { return nil }
 
     let kind = bytes[base + 2]
-    let hop = Int(bytes[base + 3])
+    let hopByte = bytes[base + 3]
+    let encrypted = (hopByte & Frame.flagEncrypted) != 0
+    let hop = Int(hopByte & Frame.hopMask)
 
     let sidData = bytes.subdata(in: (base + 4)..<(base + 6))
     let gidData = bytes.subdata(in: (base + 6)..<(base + 14))
@@ -98,7 +105,35 @@ struct Frame {
       messageId: msgId,
       timestamp: ts,
       payload: payloadData,
+      encrypted: encrypted,
     )
+  }
+
+  /// Returns a copy with the payload encrypted under the group key, or the
+  /// original frame if the kind isn't encryptable or no key is set.
+  static func maybeEncrypt(_ frame: Frame) -> Frame {
+    if frame.encrypted { return frame }
+    if !shouldEncrypt(frame.kind) { return frame }
+    guard let ct = Crypto.encrypt(groupId: frame.groupId, plaintext: frame.payload) else { return frame }
+    var copy = frame
+    copy.payload = ct
+    copy.encrypted = true
+    return copy
+  }
+
+  /// Returns a copy with the payload decrypted, or nil if decryption failed.
+  /// Clear frames pass through unchanged.
+  static func maybeDecrypt(_ frame: Frame) -> Frame? {
+    if !frame.encrypted { return frame }
+    guard let pt = Crypto.decrypt(groupId: frame.groupId, blob: frame.payload) else { return nil }
+    var copy = frame
+    copy.payload = pt
+    copy.encrypted = false
+    return copy
+  }
+
+  private static func shouldEncrypt(_ kind: UInt8) -> Bool {
+    return kind == KIND_TEXT || kind == KIND_SOS || kind == KIND_VOICE
   }
 
   static func textPayload(_ body: String) -> Data {

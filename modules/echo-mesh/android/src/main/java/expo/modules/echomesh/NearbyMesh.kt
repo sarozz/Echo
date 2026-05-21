@@ -307,30 +307,40 @@ internal class NearbyMesh(
     val key = messageKey(frame)
     if (!seen.add(key)) return  // dedup
 
-    when (frame.kind) {
-      Frame.KIND_HELLO -> applyHello(fromEndpoint, frame)
+    // Relay uses the original (possibly encrypted) form so we don't re-encrypt
+    // at every hop. Local dispatch needs the plaintext copy.
+    val plain = Frame.maybeDecrypt(frame)
+    if (plain == null) {
+      // Encrypted but we have no key — still relay so other group members can
+      // receive it, but skip local emit.
+      relayFrame(frame, exceptEndpoint = fromEndpoint)
+      return
+    }
+
+    when (plain.kind) {
+      Frame.KIND_HELLO -> applyHello(fromEndpoint, plain)
 
       Frame.KIND_TEXT, Frame.KIND_SOS -> {
-        emit("onMessage", incomingEventMap(frame))
-        sendAck(fromEndpoint, frame)
+        emit("onMessage", incomingEventMap(plain))
+        sendAck(fromEndpoint, plain)
         relayFrame(frame, exceptEndpoint = fromEndpoint)
       }
 
       Frame.KIND_VOICE -> {
         emit("onVoiceFrame", mapOf(
-          "senderId" to frame.senderId,
-          "data" to Base64.encodeToString(frame.payload, Base64.NO_WRAP),
+          "senderId" to plain.senderId,
+          "data" to Base64.encodeToString(plain.payload, Base64.NO_WRAP),
           "ts" to System.currentTimeMillis(),
           "durationMs" to 20,
         ))
         relayFrame(frame, exceptEndpoint = fromEndpoint)
       }
 
-      Frame.KIND_PEER_ADV -> applyPeerAdv(frame)
+      Frame.KIND_PEER_ADV -> applyPeerAdv(plain)
 
       Frame.KIND_ACK -> {
-        val target = Frame.parseAck(frame.payload) ?: return
-        val entry = pending.ack(target, ackingSenderId = frame.senderId) ?: return
+        val target = Frame.parseAck(plain.payload) ?: return
+        val entry = pending.ack(target, ackingSenderId = plain.senderId) ?: return
         val map = outboundEventMap(
           jsId = entry.jsId,
           frame = entry.frame,
@@ -338,7 +348,7 @@ internal class NearbyMesh(
           status = if (entry.ackedBy.size >= entry.expectedAcks) "delivered" else "sent",
           delivered = entry.ackedBy.size,
         ).toMutableMap()
-        map["ackingSenderId"] = frame.senderId
+        map["ackingSenderId"] = plain.senderId
         emit("onMessage", map)
         if (entry.ackedBy.size >= entry.expectedAcks) pending.remove(target)
       }
@@ -377,7 +387,8 @@ internal class NearbyMesh(
   /** Sends `frame` to every connected endpoint. Returns dispatch count. */
   private fun broadcastFrame(frame: Frame): Int {
     if (peers.isEmpty()) return 0
-    val bytes = frame.encode()
+    val wire = Frame.maybeEncrypt(frame)
+    val bytes = wire.encode()
     var n = 0
     for ((id, _) in peers) {
       client.sendPayload(id, Payload.fromBytes(bytes))
@@ -388,7 +399,8 @@ internal class NearbyMesh(
   }
 
   private fun sendFrameTo(endpointId: String, frame: Frame) {
-    client.sendPayload(endpointId, Payload.fromBytes(frame.encode()))
+    val wire = Frame.maybeEncrypt(frame)
+    client.sendPayload(endpointId, Payload.fromBytes(wire.encode()))
       .addOnFailureListener { e -> Log.w(TAG, "send to $endpointId failed", e) }
   }
 

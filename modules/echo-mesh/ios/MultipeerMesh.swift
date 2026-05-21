@@ -186,7 +186,8 @@ final class MultipeerMesh: NSObject, MeshTransport {
   @discardableResult
   private func broadcastFrame(_ frame: Frame) -> Int {
     guard let s = session, !s.connectedPeers.isEmpty else { return 0 }
-    let data = frame.encode()
+    let wire = Frame.maybeEncrypt(frame)
+    let data = wire.encode()
     do {
       try s.send(data, toPeers: s.connectedPeers, with: .reliable)
       return s.connectedPeers.count
@@ -198,8 +199,9 @@ final class MultipeerMesh: NSObject, MeshTransport {
 
   private func sendFrame(_ frame: Frame, to peer: MCPeerID) {
     guard let s = session else { return }
+    let wire = Frame.maybeEncrypt(frame)
     do {
-      try s.send(frame.encode(), toPeers: [peer], with: .reliable)
+      try s.send(wire.encode(), toPeers: [peer], with: .reliable)
     } catch {
       os_log("send to %{public}@ failed: %{public}@", log: log, type: .error, peer.displayName, "\(error)")
     }
@@ -258,24 +260,32 @@ final class MultipeerMesh: NSObject, MeshTransport {
     let key = messageKey(frame)
     if !seen.add(key) { return }
 
-    switch frame.kind {
+    // Relay preserves the wire form so we don't re-encrypt at every hop.
+    // Local dispatch needs the plaintext copy.
+    guard let plain = Frame.maybeDecrypt(frame) else {
+      // Encrypted but no key — still relay so other group members get it.
+      relayFrame(frame, exceptPeer: peer)
+      return
+    }
+
+    switch plain.kind {
     case Frame.KIND_HELLO:
-      applyHello(peer: peer, frame: frame)
+      applyHello(peer: peer, frame: plain)
     case Frame.KIND_TEXT, Frame.KIND_SOS:
-      emit("onMessage", incomingEventMap(frame: frame))
-      sendAck(to: peer, ackTarget: frame)
+      emit("onMessage", incomingEventMap(frame: plain))
+      sendAck(to: peer, ackTarget: plain)
       relayFrame(frame, exceptPeer: peer)
     case Frame.KIND_VOICE:
       emit("onVoiceFrame", [
-        "senderId": frame.senderId,
-        "data": frame.payload.base64EncodedString(),
+        "senderId": plain.senderId,
+        "data": plain.payload.base64EncodedString(),
         "ts": Date().timeIntervalSince1970 * 1000,
         "durationMs": 20,
       ])
       relayFrame(frame, exceptPeer: peer)
     case Frame.KIND_ACK:
-      guard let target = Frame.parseAck(frame.payload) else { break }
-      guard let entry = pending.ack(target, by: frame.senderId) else { break }
+      guard let target = Frame.parseAck(plain.payload) else { break }
+      guard let entry = pending.ack(target, by: plain.senderId) else { break }
       let done = entry.ackedBy.count >= entry.expectedAcks
       var m = outboundEventMap(
         jsId: entry.jsId,
@@ -284,11 +294,11 @@ final class MultipeerMesh: NSObject, MeshTransport {
         status: done ? "delivered" : "sent",
         delivered: entry.ackedBy.count
       )
-      m["ackingSenderId"] = frame.senderId
+      m["ackingSenderId"] = plain.senderId
       emit("onMessage", m)
       if done { _ = pending.remove(target) }
     case Frame.KIND_PEER_ADV:
-      // TODO(stage-2): multi-hop peer advertisement.
+      // TODO: multi-hop peer advertisement.
       break
     default:
       break
