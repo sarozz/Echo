@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Echo",
+    "slug": "echo",
+    "version": "0.1.0",
+    "scheme": "echo",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#080B0C"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.echo.prototype"
+    },
+    "android": {
+      "package": "app.echo.prototype",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#080B0C"
+      }
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}
