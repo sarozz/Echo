@@ -42,7 +42,8 @@ Each module ships:
 | App config + permissions             | ✅ Real                                                 |
 | Config plugin (foreground service)   | ✅ Real                                                 |
 | Native module surfaces (TS + native) | ✅ Real, methods + events callable end-to-end           |
-| `EchoMesh` Android Nearby loop       | 🟡 Skeleton — TODO(stage-2) at advertise/discover/payload |
+| Wire-protocol codec (Kotlin)         | ✅ Real — `Frame.kt` mirrors `protocol.ts` byte-for-byte |
+| `EchoMesh` Android Nearby loop       | ✅ Real — advertise + discover + accept + payloads + HELLO + relay + dedup |
 | `EchoMesh` Android BLE GATT loop     | 🟡 Skeleton — TODO(stage-2) at advertise/scan/subscribe |
 | `EchoMesh` iOS Multipeer loop        | 🟡 Skeleton — TODO(stage-2) at MCSession delegate       |
 | `EchoMesh` iOS Core Bluetooth loop   | 🟡 Skeleton — TODO(stage-2) at CB delegates             |
@@ -120,10 +121,11 @@ The transport-selection preference order in `EchoMeshModule.start` controls this
 
 ## Next steps in priority order
 
-1. Fill in the Nearby Connections + Multipeer discovery → connection flow. Both have well-trodden Apple/Google sample code that maps almost 1:1 to the skeleton structure here.
-2. Fill in the BLE GATT advertise/scan/subscribe/write loop. Use the shared UUIDs in `BleMesh.{kt,swift}`.
-3. Wire `pushIncomingFrame` calls from the mesh module to the audio module when a VOICE frame arrives — currently the two modules don't talk to each other natively. Easiest: a small shared singleton (`MeshAudioBridge`) on each platform.
-4. Replace the Opus passthrough with a real binding.
-5. Replace the FIFO jitter buffer with a ts-sorted variant + PLC.
-6. Add ACK + retransmit for TEXT and SOS frames.
-7. Plug `MeshForegroundService` start/stop into module lifecycle.
+1. ~~Fill in the Nearby Connections discovery → connection flow.~~ ✅ Done — Android↔Android text + SOS over Nearby with hop relay and dedup.
+2. Fill in the MultipeerConnectivity MCSession delegate on iOS (mirrors Nearby flow 1:1). Add a Swift `Frame.swift` mirroring `Frame.kt`.
+3. Fill in the BLE GATT advertise/scan/subscribe/write loop on both platforms (cross-platform Android↔iOS fallback). Use the shared UUIDs in `BleMesh.{kt,swift}`.
+4. Wire `pushIncomingFrame` calls from the mesh module to the audio module when a VOICE frame arrives — the two modules don't talk to each other natively yet. Easiest: a small shared singleton (`MeshAudioBridge`) on each platform.
+5. Replace the Opus passthrough with a real binding.
+6. Replace the FIFO jitter buffer with a ts-sorted variant + PLC.
+7. Add ACK + retransmit for TEXT and SOS frames (so the UI can show real "delivered/N" status).
+8. Plug `MeshForegroundService` start/stop into module lifecycle.
