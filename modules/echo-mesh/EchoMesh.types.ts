@@ -19,6 +19,10 @@ export interface NativePeer {
   rssi?: number;
   backend: NativeBackend;
   sos?: boolean;
+  lat?: number;
+  lon?: number;
+  locationAccuracyMeters?: number;
+  locationTs?: number;
 }
 
 export interface NativeMessageEvent {

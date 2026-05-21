@@ -118,6 +118,10 @@ class EchoMeshModule : Module() {
       activeTransport()?.replay(groupId, senderId, wireMessageId.toLong(), ts.toLong(), kind, body)
     }
 
+    AsyncFunction("broadcastLocation") { groupId: String, lat: Double, lon: Double, accuracy: Double ->
+      activeTransport()?.broadcastLocation(groupId, lat, lon, accuracy)
+    }
+
     AsyncFunction("setGroupSecret") { groupId: String, code: String ->
       Crypto.setSecret(groupId, code)
     }

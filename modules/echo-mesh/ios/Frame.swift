@@ -43,6 +43,7 @@ struct Frame {
   static let KIND_HELLO: UInt8 = 0x04
   static let KIND_ACK: UInt8 = 0x05
   static let KIND_PEER_ADV: UInt8 = 0x06
+  static let KIND_LOCATION_ADV: UInt8 = 0x07
 
   func encode() -> Data {
     precondition(senderId.count == Frame.senderIdBytes, "senderId must be \(Frame.senderIdBytes) chars")
@@ -133,7 +134,7 @@ struct Frame {
   }
 
   private static func shouldEncrypt(_ kind: UInt8) -> Bool {
-    return kind == KIND_TEXT || kind == KIND_SOS || kind == KIND_VOICE
+    return kind == KIND_TEXT || kind == KIND_SOS || kind == KIND_VOICE || kind == KIND_LOCATION_ADV
   }
 
   static func textPayload(_ body: String) -> Data {
@@ -164,6 +165,7 @@ struct Frame {
     case KIND_HELLO: return "hello"
     case KIND_ACK: return "ack"
     case KIND_PEER_ADV: return "peer_adv"
+    case KIND_LOCATION_ADV: return "location_adv"
     default: return "text"
     }
   }

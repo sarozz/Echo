@@ -90,6 +90,10 @@ public class EchoMeshModule: Module {
       )
     }
 
+    AsyncFunction("broadcastLocation") { (groupId: String, lat: Double, lon: Double, accuracy: Double) in
+      self.activeTransport()?.broadcastLocation(groupId: groupId, lat: lat, lon: lon, accuracy: accuracy)
+    }
+
     AsyncFunction("setGroupSecret") { (groupId: String, code: String) in
       Crypto.setSecret(groupId: groupId, code: code)
     }

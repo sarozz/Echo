@@ -40,6 +40,7 @@ export const PROTOCOL_KIND = {
   HELLO: 0x04,
   ACK: 0x05,
   PEER_ADV: 0x06,
+  LOCATION_ADV: 0x07,
 } as const;
 
 export type ProtocolKind = (typeof PROTOCOL_KIND)[keyof typeof PROTOCOL_KIND];

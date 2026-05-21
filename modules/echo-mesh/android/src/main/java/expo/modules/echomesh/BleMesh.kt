@@ -185,6 +185,24 @@ internal class BleMesh(
     broadcastFrame(frame)
   }
 
+  override fun broadcastLocation(groupId: String, lat: Double, lon: Double, accuracy: Double) {
+    if (centrals.isEmpty()) return
+    val payload = JSONObject().apply {
+      put("lat", lat); put("lon", lon); put("acc", accuracy)
+    }.toString().toByteArray(Charsets.UTF_8)
+    val frame = Frame(
+      kind = Frame.KIND_LOCATION_ADV,
+      hopCount = 0,
+      senderId = self.senderId,
+      groupId = groupId,
+      messageId = seq.getAndIncrement(),
+      timestamp = System.currentTimeMillis() / 1000L,
+      payload = payload,
+    )
+    seen.add(messageKey(frame))
+    broadcastFrame(frame)
+  }
+
   override fun relayVoiceFrame(groupId: String, dataB64: String) {
     if (centrals.isEmpty()) return
     val payload = try { Base64.decode(dataB64, Base64.NO_WRAP) } catch (t: Throwable) {
@@ -514,7 +532,23 @@ internal class BleMesh(
       Frame.KIND_PEER_ADV -> {
         // TODO: multi-hop visibility.
       }
+
+      Frame.KIND_LOCATION_ADV -> {
+        applyLocation(plain)
+        relayFrame(frame, exceptAddress = fromAddress)
+      }
     }
+  }
+
+  private fun applyLocation(frame: Frame) {
+    val obj = try { JSONObject(String(frame.payload, Charsets.UTF_8)) } catch (_: Throwable) { return }
+    val lat = obj.optDouble("lat", Double.NaN)
+    val lon = obj.optDouble("lon", Double.NaN)
+    val acc = obj.optDouble("acc", 0.0)
+    if (lat.isNaN() || lon.isNaN()) return
+    val existing = peers[frame.senderId] ?: return
+    peers[frame.senderId] = existing.copy(lat = lat, lon = lon, locationAccuracyMeters = acc, locationTs = frame.timestamp * 1000L)
+    emitPeers()
   }
 
   private fun applyHello(fromAddress: String, frame: Frame) {
@@ -688,6 +722,10 @@ internal class BleMesh(
     val battery: Int,
     val hops: Int,
     val rssi: Int?,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val locationAccuracyMeters: Double? = null,
+    val locationTs: Long? = null,
   ) {
     fun toMap(): Map<String, Any?> = buildMap {
       put("senderId", senderId)
@@ -697,6 +735,10 @@ internal class BleMesh(
       put("battery", battery)
       put("hops", hops)
       if (rssi != null) put("rssi", rssi)
+      if (lat != null) put("lat", lat)
+      if (lon != null) put("lon", lon)
+      if (locationAccuracyMeters != null) put("locationAccuracyMeters", locationAccuracyMeters)
+      if (locationTs != null) put("locationTs", locationTs)
       put("backend", "ble")
     }
   }

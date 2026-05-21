@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import * as Location from 'expo-location';
 import { color, font, radius, space } from '../src/theme/tokens';
 import { useMesh, self } from '../src/mesh/useMesh';
 import { MapMarker } from '../src/components/MapMarker';
@@ -29,14 +30,78 @@ function hashPos(seed: string, idx: number): { x: number; y: number } {
   return { x, y };
 }
 
+interface SelfCoords { lat: number; lon: number }
+
+/** Computes a viewport that contains every point with comfortable padding. */
+function viewport(points: Array<{ lat: number; lon: number }>): { minLat: number; maxLat: number; minLon: number; maxLon: number } | null {
+  if (points.length === 0) return null;
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  for (const p of points) {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lon < minLon) minLon = p.lon;
+    if (p.lon > maxLon) maxLon = p.lon;
+  }
+  // Add ~10% padding plus a minimum span so a single point isn't a single pixel.
+  const latPad = Math.max(0.001, (maxLat - minLat) * 0.1);
+  const lonPad = Math.max(0.001, (maxLon - minLon) * 0.1);
+  return { minLat: minLat - latPad, maxLat: maxLat + latPad, minLon: minLon - lonPad, maxLon: maxLon + lonPad };
+}
+
+function project(lat: number, lon: number, vp: { minLat: number; maxLat: number; minLon: number; maxLon: number }): { x: number; y: number } {
+  const fx = (lon - vp.minLon) / (vp.maxLon - vp.minLon || 1);
+  // y flips: higher latitude = top of screen.
+  const fy = 1 - (lat - vp.minLat) / (vp.maxLat - vp.minLat || 1);
+  return { x: fx * (W - 80) + 40, y: fy * (H - 200) + 80 };
+}
+
 export default function MapScreen(): React.JSX.Element {
   const peers = useMesh((s) => s.peers);
   useLocale();
 
-  const positions = useMemo(
-    () => peers.map((p, i) => ({ peer: p, ...hashPos(p.senderId, i) })),
-    [peers],
-  );
+  const [selfPos, setSelfPos] = useState<SelfCoords | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status === Location.PermissionStatus.GRANTED) {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last && !cancelled) {
+          setSelfPos({ lat: last.coords.latitude, lon: last.coords.longitude });
+        }
+      }
+    })().catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  const positions = useMemo(() => {
+    // Use real coords when both self and at least one peer have them, otherwise
+    // fall back to the deterministic hashed layout from earlier stages.
+    const realPeers = peers.filter((p): p is Peer & { lat: number; lon: number } =>
+      typeof p.lat === 'number' && typeof p.lon === 'number',
+    );
+    if (selfPos && realPeers.length > 0) {
+      const allPoints: Array<{ lat: number; lon: number }> = [selfPos, ...realPeers];
+      const vp = viewport(allPoints);
+      if (vp) {
+        return {
+          self: project(selfPos.lat, selfPos.lon, vp),
+          peers: realPeers.map((p) => ({ peer: p, ...project(p.lat, p.lon, vp) })),
+          // Peers without coords get hashed positions appended so they still show.
+          stragglers: peers
+            .filter((p) => p.lat === undefined || p.lon === undefined)
+            .map((p, i) => ({ peer: p, ...hashPos(p.senderId, i) })),
+          mode: 'real' as const,
+        };
+      }
+    }
+    return {
+      self: { x: W / 2, y: H / 2 },
+      peers: [] as Array<{ peer: Peer; x: number; y: number }>,
+      stragglers: peers.map((p, i) => ({ peer: p, ...hashPos(p.senderId, i) })),
+      mode: 'fallback' as const,
+    };
+  }, [peers, selfPos]);
 
   const sosPeer = peers.find((p: Peer) => p.sos);
 
@@ -100,12 +165,12 @@ export default function MapScreen(): React.JSX.Element {
             />
           ))}
 
-          <Circle cx={W / 2} cy={H / 2} r={9} fill={color.signal} stroke={color.bg} strokeWidth={2} />
-          <Circle cx={W / 2} cy={H / 2} r={18} fill="none" stroke={color.signal} strokeOpacity={0.5} />
-          <Circle cx={W / 2} cy={H / 2} r={34} fill="none" stroke={color.signal} strokeOpacity={0.25} />
+          <Circle cx={positions.self.x} cy={positions.self.y} r={9} fill={color.signal} stroke={color.bg} strokeWidth={2} />
+          <Circle cx={positions.self.x} cy={positions.self.y} r={18} fill="none" stroke={color.signal} strokeOpacity={0.5} />
+          <Circle cx={positions.self.x} cy={positions.self.y} r={34} fill="none" stroke={color.signal} strokeOpacity={0.25} />
           <SvgText
-            x={W / 2}
-            y={H / 2 + 30}
+            x={positions.self.x}
+            y={positions.self.y + 30}
             fontFamily="monospace"
             fontSize={10}
             fill={color.signal}
@@ -114,7 +179,10 @@ export default function MapScreen(): React.JSX.Element {
             {`YOU · #${self.senderId}`}
           </SvgText>
 
-          {positions.map(({ peer, x, y }) => (
+          {positions.peers.map(({ peer, x, y }) => (
+            <MapMarker key={peer.senderId} peer={peer} cx={x} cy={y} />
+          ))}
+          {positions.stragglers.map(({ peer, x, y }) => (
             <MapMarker key={peer.senderId} peer={peer} cx={x} cy={y} />
           ))}
         </Svg>

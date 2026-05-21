@@ -16,6 +16,8 @@ protocol MeshTransport: AnyObject {
   func triggerSOS(groupId: String) -> String
   /// Broadcasts a captured Opus frame as a VOICE wire frame.
   func relayVoiceFrame(groupId: String, dataB64: String)
+  /// Broadcasts the caller's current location as an encrypted LOCATION_ADV frame.
+  func broadcastLocation(groupId: String, lat: Double, lon: Double, accuracy: Double)
   /// Re-broadcasts a stored TEXT/SOS with original wire IDs (S&F replay).
   func replay(groupId: String, senderId: String, wireMessageId: UInt32, ts: Double, kind: String, body: String)
   func snapshotPeers() -> [[String: Any]]

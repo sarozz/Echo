@@ -18,6 +18,7 @@ import {
   persistMessage,
 } from './storeAndForward';
 import type { Identity } from '../identity/identity';
+import { LocationTracker } from '../location/locationTracker';
 
 /**
  * Transport selection.
@@ -54,11 +55,14 @@ function getTransport(): MeshTransport {
     // The store should always be initialized via setActiveIdentity before any
     // action is invoked — but if a screen reaches in early, fall back to mock.
     _transport = pickTransport(_identity ?? {
-      senderId: '0A', name: 'YOU', modeDefault: 'trek', backendPref: 'auto', createdAt: 0,
+      senderId: '0A', name: 'YOU', modeDefault: 'trek',
+      backendPref: 'auto', shareLocation: false, createdAt: 0,
     });
   }
   return _transport;
 }
+
+let _locationTracker: LocationTracker | null = null;
 
 export function setActiveIdentity(id: Identity): void {
   _identity = id;
@@ -67,6 +71,21 @@ export function setActiveIdentity(id: Identity): void {
   // Surface the identity into the store so UI code that reads `self` sees it.
   selfRef.senderId = id.senderId;
   selfRef.name = id.name;
+  // Reflect the location toggle. Tracker is created lazily once the transport
+  // is up; useMeshBootstrap reconciles on every render.
+  applyLocationShareSetting(id.shareLocation);
+}
+
+function applyLocationShareSetting(shareLocation: boolean): void {
+  if (!_transport) return;  // bootstrap will reconcile later
+  if (shareLocation) {
+    if (!_locationTracker) {
+      _locationTracker = new LocationTracker(_transport, () => useMesh.getState().activeGroupId);
+    }
+    void _locationTracker.start();
+  } else {
+    _locationTracker?.stop();
+  }
 }
 
 const INITIAL_GROUPS: Group[] = [
@@ -172,6 +191,11 @@ export function useMeshBootstrap(): void {
         messages: hydrateGroup(initialGroup),
         state: { ...s.state, mode: _identity?.modeDefault ?? 'trek' },
       });
+      // Start the location tracker if the identity opted in.
+      if (_identity?.shareLocation) {
+        _locationTracker = new LocationTracker(transport, () => useMesh.getState().activeGroupId);
+        void _locationTracker.start();
+      }
     }
 
     const replayFn = transport.replay?.bind(transport);

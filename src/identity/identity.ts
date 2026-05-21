@@ -11,6 +11,8 @@ export interface Identity {
   name: string;       // display name, UPPERCASE for the field-instrument look
   modeDefault: 'trek' | 'ride';
   backendPref: 'auto' | 'nearby' | 'multipeer' | 'ble';
+  /** Opt-in: broadcast GPS coords to the group via encrypted LOCATION_ADV. */
+  shareLocation: boolean;
   createdAt: number;
 }
 
@@ -21,6 +23,7 @@ const DEFAULT: Identity = {
   name: 'YOU',
   modeDefault: 'trek',
   backendPref: 'auto',
+  shareLocation: false,
   createdAt: 0,
 };
 
@@ -68,6 +71,7 @@ function sanitize(id: Identity): Identity {
     backendPref:
       id.backendPref === 'nearby' || id.backendPref === 'multipeer' || id.backendPref === 'ble'
         ? id.backendPref : 'auto',
+    shareLocation: id.shareLocation === true,
     createdAt: id.createdAt,
   };
 }

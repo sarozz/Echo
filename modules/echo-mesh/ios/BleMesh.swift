@@ -144,6 +144,23 @@ final class BleMesh: NSObject, MeshTransport {
     broadcastFrame(frame)
   }
 
+  func broadcastLocation(groupId: String, lat: Double, lon: Double, accuracy: Double) {
+    if outboundPeripherals.isEmpty { return }
+    let dict: [String: Any] = ["lat": lat, "lon": lon, "acc": accuracy]
+    let payload = (try? JSONSerialization.data(withJSONObject: dict, options: [])) ?? Data()
+    let frame = Frame(
+      kind: Frame.KIND_LOCATION_ADV,
+      hopCount: 0,
+      senderId: selfIdentity.senderId,
+      groupId: groupId,
+      messageId: nextSeq(),
+      timestamp: UInt32(Date().timeIntervalSince1970),
+      payload: payload
+    )
+    _ = seen.add(messageKey(frame))
+    broadcastFrame(frame)
+  }
+
   func relayVoiceFrame(groupId: String, dataB64: String) {
     guard let payload = Data(base64Encoded: dataB64) else { return }
     // TODO(stage-2): chunk if encoded frame > MTU.
@@ -264,8 +281,26 @@ final class BleMesh: NSObject, MeshTransport {
       emit("onMessage", m)
       if done { _ = pending.remove(target) }
 
+    case Frame.KIND_LOCATION_ADV:
+      applyLocation(plain)
+      if let id = fromPeripheralId {
+        relayFrame(frame, exceptPeripheralId: id)
+      }
+
     default:
       break
+    }
+  }
+
+  private func applyLocation(_ frame: Frame) {
+    guard let json = try? JSONSerialization.jsonObject(with: frame.payload, options: []) as? [String: Any] else { return }
+    guard let lat = json["lat"] as? Double, let lon = json["lon"] as? Double else { return }
+    let acc = (json["acc"] as? Double) ?? 0
+    if var p = peers[frame.senderId] {
+      p.lat = lat; p.lon = lon; p.locationAccuracyMeters = acc
+      p.locationTs = Double(frame.timestamp) * 1000
+      peers[frame.senderId] = p
+      emitPeers()
     }
   }
 
@@ -428,6 +463,10 @@ final class BleMesh: NSObject, MeshTransport {
     let battery: Int
     let hops: Int
     let rssi: Int?
+    var lat: Double? = nil
+    var lon: Double? = nil
+    var locationAccuracyMeters: Double? = nil
+    var locationTs: Double? = nil
     func toDict() -> [String: Any] {
       var d: [String: Any] = [
         "senderId": senderId,
@@ -439,6 +478,10 @@ final class BleMesh: NSObject, MeshTransport {
         "backend": "ble",
       ]
       if let r = rssi { d["rssi"] = r }
+      if let v = lat { d["lat"] = v }
+      if let v = lon { d["lon"] = v }
+      if let v = locationAccuracyMeters { d["locationAccuracyMeters"] = v }
+      if let v = locationTs { d["locationTs"] = v }
       return d
     }
   }

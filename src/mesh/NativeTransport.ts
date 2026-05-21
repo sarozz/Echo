@@ -34,6 +34,7 @@ interface NativeMeshModule {
   replay(groupId: string, senderId: string, wireMessageId: number, ts: number, kind: 'text' | 'sos', body: string): Promise<void>;
   setGroupSecret(groupId: string, code: string): Promise<void>;
   clearGroupSecret(groupId: string): Promise<void>;
+  broadcastLocation(groupId: string, lat: number, lon: number, accuracy: number): Promise<void>;
   onPeers(cb: (peers: NativePeer[]) => void): Subscription;
   onMessage(cb: (m: NativeMessageEvent) => void): Subscription;
   onState(cb: (s: NativeStateEvent) => void): Subscription;
@@ -163,6 +164,10 @@ export class NativeTransport implements MeshTransport {
     void this.mesh.clearGroupSecret(groupId);
   }
 
+  broadcastLocation(groupId: string, lat: number, lon: number, accuracy: number): void {
+    void this.mesh.broadcastLocation(groupId, lat, lon, accuracy);
+  }
+
   onPeers(cb: PeersListener): () => void {
     this.peerCbs.add(cb);
     cb(this.lastPeers);
@@ -197,6 +202,10 @@ export class NativeTransport implements MeshTransport {
       battery: p.battery,
       hops: p.hops,
       sos: p.sos,
+      ...(p.lat !== undefined ? { lat: p.lat } : {}),
+      ...(p.lon !== undefined ? { lon: p.lon } : {}),
+      ...(p.locationAccuracyMeters !== undefined ? { locationAccuracyMeters: p.locationAccuracyMeters } : {}),
+      ...(p.locationTs !== undefined ? { locationTs: p.locationTs } : {}),
     }));
     this.lastPeers = peers;
     this.peerCbs.forEach((cb) => cb(peers));

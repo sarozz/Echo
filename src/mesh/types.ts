@@ -13,6 +13,10 @@ export interface Peer {
   battery: number;
   hops: number;
   sos?: boolean;
+  lat?: number;
+  lon?: number;
+  locationAccuracyMeters?: number;
+  locationTs?: number;
 }
 
 export interface EchoMessage {

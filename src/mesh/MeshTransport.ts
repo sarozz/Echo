@@ -46,6 +46,9 @@ export interface MeshTransport {
   setGroupSecret?(groupId: string, code: string): void;
   clearGroupSecret?(groupId: string): void;
 
+  /** Broadcasts the local position as an encrypted LOCATION_ADV frame. */
+  broadcastLocation?(groupId: string, lat: number, lon: number, accuracy: number): void;
+
   onPeers(cb: PeersListener): () => void;
   onMessage(cb: MessageListener): () => void;
   onState(cb: StateListener): () => void;

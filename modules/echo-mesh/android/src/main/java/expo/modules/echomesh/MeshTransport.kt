@@ -15,6 +15,8 @@ internal interface MeshTransport {
   fun triggerSOS(groupId: String): String
   /** Broadcasts a captured Opus frame as a VOICE wire frame. dataB64 is the encoded payload. */
   fun relayVoiceFrame(groupId: String, dataB64: String)
+  /** Broadcasts the caller's current location as an encrypted LOCATION_ADV frame. */
+  fun broadcastLocation(groupId: String, lat: Double, lon: Double, accuracy: Double)
   /**
    * Re-broadcasts a stored TEXT/SOS message with its original wire IDs. Used
    * by store-and-forward when a peer reconnects. SeenSet on the receiver

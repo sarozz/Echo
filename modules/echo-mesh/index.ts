@@ -24,6 +24,7 @@ const Native = requireNativeModule('EchoMesh') as {
   replay(groupId: string, senderId: string, wireMessageId: number, ts: number, kind: 'text' | 'sos', body: string): Promise<void>;
   setGroupSecret(groupId: string, code: string): Promise<void>;
   clearGroupSecret(groupId: string): Promise<void>;
+  broadcastLocation(groupId: string, lat: number, lon: number, accuracy: number): Promise<void>;
   getCurrentPeers(): Promise<NativePeer[]>;
 };
 
@@ -78,6 +79,10 @@ export function setGroupSecret(groupId: string, code: string): Promise<void> {
 
 export function clearGroupSecret(groupId: string): Promise<void> {
   return Native.clearGroupSecret(groupId);
+}
+
+export function broadcastLocation(groupId: string, lat: number, lon: number, accuracy: number): Promise<void> {
+  return Native.broadcastLocation(groupId, lat, lon, accuracy);
 }
 
 export function getCurrentPeers(): Promise<NativePeer[]> {

@@ -144,6 +144,24 @@ export default function SettingsScreen(): React.JSX.Element {
             </View>
           </Section>
 
+          <Section title={t('settings.location')}>
+            <Text style={styles.bodyText}>{t('settings.location.body')}</Text>
+            <Pressable
+              onPress={() => {
+                update({ shareLocation: !identity.shareLocation });
+                Haptics.selectionAsync();
+              }}
+              style={[styles.optionRow, identity.shareLocation ? styles.optionRowActive : null]}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: identity.shareLocation }}
+            >
+              <Text style={styles.optionLabel}>
+                {identity.shareLocation ? t('settings.location.on') : t('settings.location.off')}
+              </Text>
+              {identity.shareLocation ? <Text style={styles.optionCheck}>●</Text> : null}
+            </Pressable>
+          </Section>
+
           <Section title={t('settings.diagnostics')}>
             <Diag label={t('settings.diag.backend')} value={state.conn.toUpperCase()} />
             <Diag label={t('settings.diag.peers')} value={`${peers.length}`} />
@@ -295,6 +313,8 @@ const styles = StyleSheet.create({
   optionRowActive: { borderColor: color.signal, backgroundColor: 'rgba(0,230,199,0.06)' },
   optionLabel: { fontFamily: font.display, color: color.tx, fontSize: 14, letterSpacing: 1.2 },
   optionCheck: { color: color.signal, fontSize: 14 },
+
+  bodyText: { fontFamily: font.body, fontSize: 13, lineHeight: 18, color: color.tx2 },
 
   diagRow: {
     flexDirection: 'row',

@@ -138,6 +138,23 @@ final class MultipeerMesh: NSObject, MeshTransport {
     broadcastFrame(frame)
   }
 
+  func broadcastLocation(groupId: String, lat: Double, lon: Double, accuracy: Double) {
+    guard let s = session, !s.connectedPeers.isEmpty else { return }
+    let dict: [String: Any] = ["lat": lat, "lon": lon, "acc": accuracy]
+    let payload = (try? JSONSerialization.data(withJSONObject: dict, options: [])) ?? Data()
+    let frame = Frame(
+      kind: Frame.KIND_LOCATION_ADV,
+      hopCount: 0,
+      senderId: selfIdentity.senderId,
+      groupId: groupId,
+      messageId: nextSeq(),
+      timestamp: UInt32(Date().timeIntervalSince1970),
+      payload: payload
+    )
+    _ = seen.add(messageKey(frame))
+    broadcastFrame(frame)
+  }
+
   func relayVoiceFrame(groupId: String, dataB64: String) {
     guard let payload = Data(base64Encoded: dataB64) else { return }
     let frame = Frame(
@@ -298,10 +315,26 @@ final class MultipeerMesh: NSObject, MeshTransport {
       emit("onMessage", m)
       if done { _ = pending.remove(target) }
     case Frame.KIND_PEER_ADV:
-      // TODO: multi-hop peer advertisement.
       break
+    case Frame.KIND_LOCATION_ADV:
+      applyLocation(plain)
+      relayFrame(frame, exceptPeer: peer)
     default:
       break
+    }
+  }
+
+  private func applyLocation(_ frame: Frame) {
+    guard let json = try? JSONSerialization.jsonObject(with: frame.payload, options: []) as? [String: Any] else { return }
+    guard let lat = json["lat"] as? Double, let lon = json["lon"] as? Double else { return }
+    let acc = (json["acc"] as? Double) ?? 0
+    // Find the peer entry by senderId and update its location fields.
+    if let entry = peers.first(where: { $0.value.senderId == frame.senderId }) {
+      var p = entry.value
+      p.lat = lat; p.lon = lon; p.locationAccuracyMeters = acc
+      p.locationTs = Double(frame.timestamp) * 1000
+      peers[entry.key] = p
+      emitPeers()
     }
   }
 
@@ -415,8 +448,12 @@ final class MultipeerMesh: NSObject, MeshTransport {
     let role: String
     let battery: Int
     let hops: Int
+    var lat: Double? = nil
+    var lon: Double? = nil
+    var locationAccuracyMeters: Double? = nil
+    var locationTs: Double? = nil
     func toDict() -> [String: Any] {
-      return [
+      var d: [String: Any] = [
         "senderId": senderId,
         "name": name,
         "platform": platform,
@@ -425,6 +462,11 @@ final class MultipeerMesh: NSObject, MeshTransport {
         "hops": hops,
         "backend": "multipeer",
       ]
+      if let v = lat { d["lat"] = v }
+      if let v = lon { d["lon"] = v }
+      if let v = locationAccuracyMeters { d["locationAccuracyMeters"] = v }
+      if let v = locationTs { d["locationTs"] = v }
+      return d
     }
   }
 }
