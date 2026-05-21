@@ -50,6 +50,14 @@ export interface NativeVoiceEvent {
   talkerName?: string;
 }
 
+export interface NativeVoiceFrame {
+  senderId: string;
+  /** base64-encoded Opus frame */
+  data: string;
+  ts: number;
+  durationMs: number;
+}
+
 export interface EchoMeshStartOptions {
   selfSenderId: string;
   selfName: string;
@@ -62,4 +70,5 @@ export type EchoMeshEvents = {
   onMessage: NativeMessageEvent;
   onState: NativeStateEvent;
   onVoiceActivity: NativeVoiceEvent;
+  onVoiceFrame: NativeVoiceFrame;
 };

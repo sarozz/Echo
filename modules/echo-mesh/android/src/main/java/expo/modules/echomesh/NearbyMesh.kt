@@ -2,6 +2,7 @@ package expo.modules.echomesh
 
 import android.content.Context
 import android.os.BatteryManager
+import android.util.Base64
 import android.util.Log
 import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.AdvertisingOptions
@@ -134,8 +135,9 @@ internal class NearbyMesh(
   }
 
   override fun startVoice(groupId: String) {
-    // TODO(stage-2): connect echo-audio's onCapturedFrame stream to a
-    // native bridge here, encode as VOICE frames, broadcast.
+    // The actual frame fanout happens via relayVoiceFrame, called from JS
+    // for each onCapturedFrame from echo-audio. This call just signals
+    // local UI state.
     emit("onVoiceActivity", mapOf(
       "active" to true,
       "talkerSenderId" to self.senderId,
@@ -145,6 +147,24 @@ internal class NearbyMesh(
 
   override fun stopVoice(groupId: String) {
     emit("onVoiceActivity", mapOf("active" to false))
+  }
+
+  override fun relayVoiceFrame(groupId: String, dataB64: String) {
+    if (peers.isEmpty()) return
+    val payload = try { Base64.decode(dataB64, Base64.NO_WRAP) } catch (t: Throwable) {
+      Log.w(TAG, "bad voice b64", t); return
+    }
+    val frame = Frame(
+      kind = Frame.KIND_VOICE,
+      hopCount = 0,
+      senderId = self.senderId,
+      groupId = groupId,
+      messageId = seq.getAndIncrement(),
+      timestamp = System.currentTimeMillis() / 1000L,
+      payload = payload,
+    )
+    seen.add(messageKey(frame))
+    broadcastFrame(frame)
   }
 
   override fun triggerSOS(groupId: String): String {
@@ -275,8 +295,12 @@ internal class NearbyMesh(
       }
 
       Frame.KIND_VOICE -> {
-        // TODO(stage-2): hand off to the audio module's pushIncomingFrame
-        // via a small native bridge (MeshAudioBridge) so playback starts.
+        emit("onVoiceFrame", mapOf(
+          "senderId" to frame.senderId,
+          "data" to Base64.encodeToString(frame.payload, Base64.NO_WRAP),
+          "ts" to System.currentTimeMillis(),
+          "durationMs" to 20,
+        ))
         relayFrame(frame, exceptEndpoint = fromEndpoint)
       }
 

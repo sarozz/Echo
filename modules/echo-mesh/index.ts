@@ -7,6 +7,7 @@ import type {
   NativePeer,
   NativeStateEvent,
   NativeVoiceEvent,
+  NativeVoiceFrame,
 } from './EchoMesh.types';
 
 // Resolved by Expo at build time via expo-module.config.json.
@@ -19,6 +20,7 @@ const Native = requireNativeModule('EchoMesh') as {
   startVoice(groupId: string): Promise<void>;
   stopVoice(groupId: string): Promise<void>;
   triggerSOS(groupId: string): Promise<string>;
+  relayVoiceFrame(groupId: string, dataB64: string): Promise<void>;
   getCurrentPeers(): Promise<NativePeer[]>;
 };
 
@@ -52,6 +54,10 @@ export function triggerSOS(groupId: string): Promise<string> {
   return Native.triggerSOS(groupId);
 }
 
+export function relayVoiceFrame(groupId: string, dataB64: string): Promise<void> {
+  return Native.relayVoiceFrame(groupId, dataB64);
+}
+
 export function getCurrentPeers(): Promise<NativePeer[]> {
   return Native.getCurrentPeers();
 }
@@ -72,10 +78,15 @@ export function onVoiceActivity(cb: (v: NativeVoiceEvent) => void): Subscription
   return emitter.addListener<NativeVoiceEvent>('onVoiceActivity', cb);
 }
 
+export function onVoiceFrame(cb: (f: NativeVoiceFrame) => void): Subscription {
+  return emitter.addListener<NativeVoiceFrame>('onVoiceFrame', cb);
+}
+
 export type {
   NativePeer,
   NativeMessageEvent,
   NativeStateEvent,
   NativeVoiceEvent,
+  NativeVoiceFrame,
   EchoMeshStartOptions,
 } from './EchoMesh.types';

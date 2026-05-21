@@ -14,6 +14,8 @@ protocol MeshTransport: AnyObject {
   func startVoice(_ groupId: String)
   func stopVoice(_ groupId: String)
   func triggerSOS(groupId: String) -> String
+  /// Broadcasts a captured Opus frame as a VOICE wire frame.
+  func relayVoiceFrame(groupId: String, dataB64: String)
   func snapshotPeers() -> [[String: Any]]
 }
 

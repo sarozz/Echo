@@ -34,7 +34,7 @@ class EchoMeshModule : Module() {
   override fun definition(): ModuleDefinition = ModuleDefinition {
     Name("EchoMesh")
 
-    Events("onPeers", "onMessage", "onState", "onVoiceActivity")
+    Events("onPeers", "onMessage", "onState", "onVoiceActivity", "onVoiceFrame")
 
     OnCreate {
       val ctx = appContext.reactContext ?: error("react context missing")
@@ -103,6 +103,10 @@ class EchoMeshModule : Module() {
 
     AsyncFunction("triggerSOS") { groupId: String ->
       activeTransport()?.triggerSOS(groupId) ?: error("transport not started")
+    }
+
+    AsyncFunction("relayVoiceFrame") { groupId: String, dataB64: String ->
+      activeTransport()?.relayVoiceFrame(groupId, dataB64)
     }
 
     AsyncFunction("getCurrentPeers") {

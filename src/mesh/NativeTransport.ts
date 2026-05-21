@@ -17,6 +17,7 @@ import type {
   NativePeer,
   NativeStateEvent,
   NativeVoiceEvent,
+  NativeVoiceFrame,
 } from '../../modules/echo-mesh/EchoMesh.types';
 import type { CapturedFrame, IncomingFrame } from '../../modules/echo-audio/EchoAudio.types';
 import type { Subscription } from 'expo-modules-core';
@@ -29,10 +30,12 @@ interface NativeMeshModule {
   startVoice(groupId: string): Promise<void>;
   stopVoice(groupId: string): Promise<void>;
   triggerSOS(groupId: string): Promise<string>;
+  relayVoiceFrame(groupId: string, dataB64: string): Promise<void>;
   onPeers(cb: (peers: NativePeer[]) => void): Subscription;
   onMessage(cb: (m: NativeMessageEvent) => void): Subscription;
   onState(cb: (s: NativeStateEvent) => void): Subscription;
   onVoiceActivity(cb: (v: NativeVoiceEvent) => void): Subscription;
+  onVoiceFrame(cb: (f: NativeVoiceFrame) => void): Subscription;
 }
 
 interface NativeAudioModule {
@@ -87,16 +90,23 @@ export class NativeTransport implements MeshTransport {
     this.subs.push(this.mesh.onState((ns) => this.handleState(ns)));
     this.subs.push(this.mesh.onVoiceActivity((nv) => this.handleVoice(nv)));
 
-    // Captured frames flow into the mesh module as VOICE frames. The mesh
-    // module handles peer fanout; we do not retransmit on the JS side.
+    // Outbound voice: forward each captured Opus frame to the mesh
+    // module which wraps it in a VOICE wire frame and fans it out.
     this.subs.push(this.audio.onCapturedFrame((f) => {
-      // STAGE 2: route through a dedicated native fanout (mesh.relayVoiceFrame)
-      // to keep audio off the JS thread. For now we drop frames silently if
-      // there's no active voice group — encode loop keeps running.
-      if (this.currentVoiceGroup === null) return;
-      // TODO(stage-2): native exposes `relayVoiceFrame(senderId, data, ts, durationMs)`.
-      // The native side then sends as a VOICE protocol frame.
-      void f;
+      const group = this.currentVoiceGroup;
+      if (group === null) return;
+      void this.mesh.relayVoiceFrame(group, f.data);
+    }));
+
+    // Inbound voice: each VOICE wire frame from a peer is pushed into the
+    // audio module's jitter buffer for decoded playback.
+    this.subs.push(this.mesh.onVoiceFrame((vf) => {
+      void this.audio.pushIncomingFrame({
+        senderId: vf.senderId,
+        data: vf.data,
+        ts: vf.ts,
+        durationMs: vf.durationMs,
+      });
     }));
 
     void this.mesh.start({

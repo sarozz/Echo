@@ -24,6 +24,7 @@ import android.content.Context
 import android.os.BatteryManager
 import android.os.Build
 import android.os.ParcelUuid
+import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import org.json.JSONObject
@@ -155,9 +156,7 @@ internal class BleMesh(
   }
 
   override fun startVoice(groupId: String) {
-    // TODO(stage-2): Opus frames from echo-audio fan out as VOICE frames.
-    // BLE MTU is the real constraint — chunk Opus 20ms frames into
-    // ≤180-byte BLE writes and reassemble using a per-sender sequence.
+    // Fanout happens via relayVoiceFrame; this call only signals UI state.
     emit("onVoiceActivity", mapOf(
       "active" to true,
       "talkerSenderId" to self.senderId,
@@ -167,6 +166,27 @@ internal class BleMesh(
 
   override fun stopVoice(groupId: String) {
     emit("onVoiceActivity", mapOf("active" to false))
+  }
+
+  override fun relayVoiceFrame(groupId: String, dataB64: String) {
+    if (centrals.isEmpty()) return
+    val payload = try { Base64.decode(dataB64, Base64.NO_WRAP) } catch (t: Throwable) {
+      Log.w(TAG, "bad voice b64", t); return
+    }
+    // TODO(stage-2): chunk if Frame size > MTU. For Opus 20ms @ 16kbps
+    //                payload is ~40-80 bytes, well under MTU even with
+    //                BLE's 23-byte default; we request 512 post-connect.
+    val frame = Frame(
+      kind = Frame.KIND_VOICE,
+      hopCount = 0,
+      senderId = self.senderId,
+      groupId = groupId,
+      messageId = seq.getAndIncrement(),
+      timestamp = System.currentTimeMillis() / 1000L,
+      payload = payload,
+    )
+    seen.add(messageKey(frame))
+    broadcastFrame(frame)
   }
 
   override fun triggerSOS(groupId: String): String {
@@ -445,7 +465,12 @@ internal class BleMesh(
       }
 
       Frame.KIND_VOICE -> {
-        // TODO(stage-2): bridge to echo-audio.pushIncomingFrame so playback starts.
+        emit("onVoiceFrame", mapOf(
+          "senderId" to frame.senderId,
+          "data" to Base64.encodeToString(frame.payload, Base64.NO_WRAP),
+          "ts" to System.currentTimeMillis(),
+          "durationMs" to 20,
+        ))
         relayFrame(frame, exceptAddress = fromAddress)
       }
 

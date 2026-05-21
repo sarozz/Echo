@@ -112,11 +112,26 @@ final class BleMesh: NSObject, MeshTransport {
       "talkerSenderId": selfIdentity.senderId,
       "talkerName": selfIdentity.name,
     ])
-    // TODO(stage-2): chunk Opus frames into BLE writes via MeshAudioBridge.
   }
 
   func stopVoice(_ groupId: String) {
     emit("onVoiceActivity", ["active": false])
+  }
+
+  func relayVoiceFrame(groupId: String, dataB64: String) {
+    guard let payload = Data(base64Encoded: dataB64) else { return }
+    // TODO(stage-2): chunk if encoded frame > MTU.
+    let frame = Frame(
+      kind: Frame.KIND_VOICE,
+      hopCount: 0,
+      senderId: selfIdentity.senderId,
+      groupId: groupId,
+      messageId: nextSeq(),
+      timestamp: UInt32(Date().timeIntervalSince1970),
+      payload: payload
+    )
+    _ = seen.add(messageKey(frame))
+    broadcastFrame(frame)
   }
 
   func triggerSOS(groupId: String) -> String {
@@ -192,7 +207,12 @@ final class BleMesh: NSObject, MeshTransport {
       }
 
     case Frame.KIND_VOICE:
-      // TODO(stage-2): hand off to MeshAudioBridge.pushIncomingFrame.
+      emit("onVoiceFrame", [
+        "senderId": frame.senderId,
+        "data": frame.payload.base64EncodedString(),
+        "ts": Date().timeIntervalSince1970 * 1000,
+        "durationMs": 20,
+      ])
       if let id = fromPeripheralId {
         relayFrame(frame, exceptPeripheralId: id)
       }

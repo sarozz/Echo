@@ -19,7 +19,7 @@ public class EchoMeshModule: Module {
   public func definition() -> ModuleDefinition {
     Name("EchoMesh")
 
-    Events("onPeers", "onMessage", "onState", "onVoiceActivity")
+    Events("onPeers", "onMessage", "onState", "onVoiceActivity", "onVoiceFrame")
 
     OnCreate {
       let bus: EmitFn = { [weak self] name, payload in self?.sendEvent(name, payload) }
@@ -73,6 +73,10 @@ public class EchoMeshModule: Module {
     AsyncFunction("triggerSOS") { (groupId: String) -> String in
       guard let t = self.activeTransport() else { throw EchoMeshError.notStarted }
       return t.triggerSOS(groupId: groupId)
+    }
+
+    AsyncFunction("relayVoiceFrame") { (groupId: String, dataB64: String) in
+      self.activeTransport()?.relayVoiceFrame(groupId: groupId, dataB64: dataB64)
     }
 
     AsyncFunction("getCurrentPeers") { () -> [[String: Any]] in

@@ -13,6 +13,8 @@ internal interface MeshTransport {
   fun startVoice(groupId: String)
   fun stopVoice(groupId: String)
   fun triggerSOS(groupId: String): String
+  /** Broadcasts a captured Opus frame as a VOICE wire frame. dataB64 is the encoded payload. */
+  fun relayVoiceFrame(groupId: String, dataB64: String)
   fun snapshotPeers(): List<Map<String, Any?>>
 }
 

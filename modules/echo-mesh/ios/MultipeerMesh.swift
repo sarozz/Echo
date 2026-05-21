@@ -104,8 +104,7 @@ final class MultipeerMesh: NSObject, MeshTransport {
   }
 
   func startVoice(_ groupId: String) {
-    // TODO(stage-2): wire echo-audio's onCapturedFrame stream into a
-    // MeshAudioBridge and broadcast VOICE frames from here.
+    // Fanout happens via relayVoiceFrame; this call only signals UI state.
     emit("onVoiceActivity", [
       "active": true,
       "talkerSenderId": selfIdentity.senderId,
@@ -115,6 +114,21 @@ final class MultipeerMesh: NSObject, MeshTransport {
 
   func stopVoice(_ groupId: String) {
     emit("onVoiceActivity", ["active": false])
+  }
+
+  func relayVoiceFrame(groupId: String, dataB64: String) {
+    guard let payload = Data(base64Encoded: dataB64) else { return }
+    let frame = Frame(
+      kind: Frame.KIND_VOICE,
+      hopCount: 0,
+      senderId: selfIdentity.senderId,
+      groupId: groupId,
+      messageId: nextSeq(),
+      timestamp: UInt32(Date().timeIntervalSince1970),
+      payload: payload
+    )
+    _ = seen.add(messageKey(frame))
+    broadcastFrame(frame)
   }
 
   func triggerSOS(groupId: String) -> String {
@@ -221,7 +235,12 @@ final class MultipeerMesh: NSObject, MeshTransport {
       emit("onMessage", incomingEventMap(frame: frame))
       relayFrame(frame, exceptPeer: peer)
     case Frame.KIND_VOICE:
-      // TODO(stage-2): handoff to MeshAudioBridge so playback starts.
+      emit("onVoiceFrame", [
+        "senderId": frame.senderId,
+        "data": frame.payload.base64EncodedString(),
+        "ts": Date().timeIntervalSince1970 * 1000,
+        "durationMs": 20,
+      ])
       relayFrame(frame, exceptPeer: peer)
     case Frame.KIND_ACK:
       // TODO(stage-2): bump delivery state on matching mine messages.
