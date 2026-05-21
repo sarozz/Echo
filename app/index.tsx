@@ -18,6 +18,7 @@ import { ModeToggle } from '../src/components/ModeToggle';
 import { MessageBubble } from '../src/components/MessageBubble';
 import { VoiceButton } from '../src/components/VoiceButton';
 import { SosButton } from '../src/components/SosButton';
+import { t, useLocale } from '../src/i18n/strings';
 
 export default function ChannelScreen(): React.JSX.Element {
   const state = useMesh((s) => s.state);
@@ -30,6 +31,7 @@ export default function ChannelScreen(): React.JSX.Element {
   const startVoice = useMesh((s) => s.startVoice);
   const stopVoice = useMesh((s) => s.stopVoice);
   const triggerSOS = useMesh((s) => s.triggerSOS);
+  useLocale();
 
   const [draft, setDraft] = useState('');
   const [voxOn, setVoxOn] = useState(false);
@@ -102,7 +104,8 @@ export default function ChannelScreen(): React.JSX.Element {
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder="Send message…"
+            placeholder={t('channel.send.placeholder')}
+            accessibilityLabel={t('channel.send.placeholder')}
             placeholderTextColor={color.tx3}
             style={styles.input}
             returnKeyType="send"
@@ -121,7 +124,7 @@ export default function ChannelScreen(): React.JSX.Element {
               ];
             }}
           >
-            <Text style={[styles.sendLabel, draft.trim().length === 0 ? styles.sendLabelDisabled : null]}>SEND</Text>
+            <Text style={[styles.sendLabel, draft.trim().length === 0 ? styles.sendLabelDisabled : null]}>{t('channel.send.button')}</Text>
           </Pressable>
         </View>
 
@@ -136,10 +139,8 @@ export default function ChannelScreen(): React.JSX.Element {
 function EmptyState(): React.JSX.Element {
   return (
     <View style={styles.empty}>
-      <Text style={styles.emptyTitle}>CHANNEL CLEAR</Text>
-      <Text style={styles.emptyBody}>
-        Send a message, hold to talk, or wait for peers to chime in. The mesh is alive.
-      </Text>
+      <Text style={styles.emptyTitle}>{t('channel.empty.title')}</Text>
+      <Text style={styles.emptyBody}>{t('channel.empty.body')}</Text>
     </View>
   );
 }

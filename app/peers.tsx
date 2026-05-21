@@ -4,17 +4,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { color, font, space } from '../src/theme/tokens';
 import { useMesh, self } from '../src/mesh/useMesh';
 import { PeerChip } from '../src/components/PeerChip';
+import { t, useLocale } from '../src/i18n/strings';
 
 export default function PeersScreen(): React.JSX.Element {
   const peers = useMesh((s) => s.peers);
   const state = useMesh((s) => s.state);
+  useLocale();
 
   return (
     <SafeAreaView style={styles.root} edges={['bottom']}>
       <View style={styles.header}>
-        <Text style={styles.title}>GROUP ROSTER</Text>
+        <Text style={styles.title}>{t('peers.title')}</Text>
         <Text style={styles.sub}>
-          YOU · #{self.senderId} · {state.selfRole.toUpperCase()} · {peers.length} PEER{peers.length === 1 ? '' : 'S'} REACHED
+          {t('peers.sub', {
+            senderId: self.senderId,
+            role: state.selfRole.toUpperCase(),
+            count: peers.length,
+            plural: peers.length === 1 ? '' : 'S',
+          })}
         </Text>
       </View>
       <FlatList
@@ -25,8 +32,8 @@ export default function PeersScreen(): React.JSX.Element {
         ItemSeparatorComponent={() => <View style={{ height: space.s }} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>NO PEERS YET</Text>
-            <Text style={styles.emptyBody}>Scanning for nearby devices.</Text>
+            <Text style={styles.emptyTitle}>{t('peers.empty.title')}</Text>
+            <Text style={styles.emptyBody}>{t('peers.empty.body')}</Text>
           </View>
         }
       />

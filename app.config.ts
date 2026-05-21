@@ -9,7 +9,7 @@ const config: ExpoConfig = {
   userInterfaceStyle: 'dark',
   icon: './assets/icon.png',
   splash: {
-    image: './assets/icon.png',
+    image: './assets/splash.png',
     resizeMode: 'contain',
     backgroundColor: '#080B0C',
   },

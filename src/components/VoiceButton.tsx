@@ -5,6 +5,7 @@ import { color, font, radius, space } from '../theme/tokens';
 import { RippleMark } from './RippleMark';
 import { EqualizerBars } from './EqualizerBars';
 import type { VoiceActivity } from '../mesh/types';
+import { t, useLocale } from '../i18n/strings';
 
 interface PTTProps {
   variant: 'ptt';
@@ -27,6 +28,7 @@ export function VoiceButton(props: Props): React.JSX.Element {
 
 function PTT({ onStart, onStop, voice }: PTTProps): React.JSX.Element {
   const [pressed, setPressed] = React.useState(false);
+  useLocale();
   const remoteTalking = voice.active && voice.talkerName && voice.talkerName !== 'YOU';
 
   return (
@@ -47,7 +49,7 @@ function PTT({ onStart, onStop, voice }: PTTProps): React.JSX.Element {
           (p || pressed) && styles.pttBtnActive,
         ]}
         accessibilityRole="button"
-        accessibilityLabel="Hold to talk"
+        accessibilityLabel={t('voice.ptt.hold')}
       >
         <View style={StyleSheet.absoluteFill}>
           <View style={styles.ripplePos}>
@@ -55,10 +57,14 @@ function PTT({ onStart, onStop, voice }: PTTProps): React.JSX.Element {
           </View>
         </View>
         <Text style={[styles.pttLabel, (pressed) && styles.pttLabelActive]}>
-          {pressed ? 'TRANSMITTING' : 'HOLD TO TALK'}
+          {pressed ? t('voice.ptt.transmitting') : t('voice.ptt.hold')}
         </Text>
         <Text style={styles.pttSub}>
-          {pressed ? 'RELEASE TO STOP' : remoteTalking ? `${voice.talkerName} TALKING` : 'PUSH-TO-TALK'}
+          {pressed
+            ? t('voice.ptt.release')
+            : remoteTalking
+              ? `${voice.talkerName} ${t('voice.remote.talking')}`
+              : t('voice.ptt.label')}
         </Text>
       </Pressable>
       {remoteTalking && !pressed && (
@@ -72,6 +78,7 @@ function PTT({ onStart, onStop, voice }: PTTProps): React.JSX.Element {
 }
 
 function VOX({ active, onToggle, voice }: VOXProps): React.JSX.Element {
+  useLocale();
   const remoteTalking = voice.active && voice.talkerName && voice.talkerName !== 'YOU';
   return (
     <View style={styles.voxWrap}>
@@ -83,19 +90,20 @@ function VOX({ active, onToggle, voice }: VOXProps): React.JSX.Element {
         style={[styles.voxBtn, active && styles.voxBtnActive]}
         accessibilityRole="switch"
         accessibilityState={{ checked: active }}
+        accessibilityLabel={active ? t('voice.vox.on') : t('voice.vox.off')}
       >
         <View style={styles.voxLeft}>
           <Text style={[styles.voxLabel, active && styles.voxLabelActive]}>
-            VOX {active ? 'ON' : 'OFF'}
+            {active ? t('voice.vox.on') : t('voice.vox.off')}
           </Text>
-          <Text style={styles.voxSub}>HANDS-FREE · VOICE-ACTIVATED</Text>
+          <Text style={styles.voxSub}>{t('voice.vox.sub')}</Text>
         </View>
         <View style={styles.voxRight}>
           <EqualizerBars active={!!(active && (voice.active || remoteTalking))} tint={active ? color.signal : color.tx3} height={22} />
         </View>
       </Pressable>
       {remoteTalking && (
-        <Text style={styles.remoteText}>{voice.talkerName} TALKING</Text>
+        <Text style={styles.remoteText}>{voice.talkerName} {t('voice.remote.talking')}</Text>
       )}
     </View>
   );

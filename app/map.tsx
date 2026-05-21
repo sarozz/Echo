@@ -6,6 +6,7 @@ import { color, font, radius, space } from '../src/theme/tokens';
 import { useMesh, self } from '../src/mesh/useMesh';
 import { MapMarker } from '../src/components/MapMarker';
 import type { Peer } from '../src/mesh/types';
+import { t, useLocale } from '../src/i18n/strings';
 
 const W = 360;
 const H = 480;
@@ -30,6 +31,7 @@ function hashPos(seed: string, idx: number): { x: number; y: number } {
 
 export default function MapScreen(): React.JSX.Element {
   const peers = useMesh((s) => s.peers);
+  useLocale();
 
   const positions = useMemo(
     () => peers.map((p, i) => ({ peer: p, ...hashPos(p.senderId, i) })),
@@ -42,8 +44,8 @@ export default function MapScreen(): React.JSX.Element {
     <SafeAreaView style={styles.root} edges={['bottom']}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>GROUP MAP</Text>
-          <Text style={styles.sub}>POSITIONS APPROXIMATE · LAST RX VIA MESH</Text>
+          <Text style={styles.title}>{t('map.title')}</Text>
+          <Text style={styles.sub}>{t('map.sub')}</Text>
         </View>
         {sosPeer && (
           <View style={styles.sosBadge}>

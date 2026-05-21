@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { mockTransport, selfName, selfSenderId } from './MockTransport';
+import { mockTransport } from './MockTransport';
 import type { MeshTransport } from './MeshTransport';
 import type {
   EchoMessage,
@@ -17,6 +17,7 @@ import {
   onPeersChanged,
   persistMessage,
 } from './storeAndForward';
+import type { Identity } from '../identity/identity';
 
 /**
  * Transport selection.
@@ -26,18 +27,17 @@ import {
  *
  * Forcing the mock during a dev-client build is occasionally useful (UI work
  * without devices nearby); set `EXPO_PUBLIC_FORCE_MOCK_MESH=1` in `.env` to
- * opt in. `EXPO_PUBLIC_*` is the only env scheme Expo Router exposes to JS.
+ * opt in.
  */
-function pickTransport(): MeshTransport {
+function pickTransport(id: Identity): MeshTransport {
   const forceMock = process.env['EXPO_PUBLIC_FORCE_MOCK_MESH'] === '1';
   const env = Constants.executionEnvironment;
   const isExpoGo = env === ExecutionEnvironment.StoreClient;
   if (forceMock || isExpoGo) return mockTransport;
 
   try {
-    // Lazy require — keeps Expo Go bundles clean of native imports.
     const mod = require('./NativeTransport') as typeof import('./NativeTransport');
-    return new mod.NativeTransport({ senderId: selfSenderId(), name: selfName() });
+    return new mod.NativeTransport({ senderId: id.senderId, name: id.name });
   } catch (e) {
     if (__DEV__) {
       console.warn('[echo] NativeTransport unavailable, falling back to mock:', e);
@@ -46,7 +46,28 @@ function pickTransport(): MeshTransport {
   }
 }
 
-const transport: MeshTransport = pickTransport();
+let _transport: MeshTransport | null = null;
+let _identity: Identity | null = null;
+
+function getTransport(): MeshTransport {
+  if (!_transport) {
+    // The store should always be initialized via setActiveIdentity before any
+    // action is invoked — but if a screen reaches in early, fall back to mock.
+    _transport = pickTransport(_identity ?? {
+      senderId: '0A', name: 'YOU', modeDefault: 'trek', backendPref: 'auto', createdAt: 0,
+    });
+  }
+  return _transport;
+}
+
+export function setActiveIdentity(id: Identity): void {
+  _identity = id;
+  // Force re-construction next time a transport is needed (e.g. after onboarding).
+  _transport = null;
+  // Surface the identity into the store so UI code that reads `self` sees it.
+  selfRef.senderId = id.senderId;
+  selfRef.name = id.name;
+}
 
 const INITIAL_GROUPS: Group[] = [
   { id: 'main', name: 'ANNAPURNA CIRCUIT', code: 'ANP-7Q', peerCount: 4 },
@@ -62,7 +83,6 @@ interface MeshStore {
   groups: Group[];
   activeGroupId: string;
 
-  // actions
   setMode: (m: Mode) => void;
   sendText: (body: string) => void;
   startVoice: () => void;
@@ -87,23 +107,23 @@ export const useMesh = create<MeshStore>((set, get) => ({
   sendText: (body) => {
     const trimmed = body.trim();
     if (!trimmed) return;
-    transport.sendText(get().activeGroupId, trimmed);
+    getTransport().sendText(get().activeGroupId, trimmed);
   },
 
   startVoice: () => {
-    transport.startVoice(get().activeGroupId);
+    getTransport().startVoice(get().activeGroupId);
   },
 
   stopVoice: () => {
-    transport.stopVoice(get().activeGroupId);
+    getTransport().stopVoice(get().activeGroupId);
   },
 
   triggerSOS: () => {
-    transport.triggerSOS(get().activeGroupId);
+    getTransport().triggerSOS(get().activeGroupId);
   },
 
   switchGroup: (groupId) => {
-    transport.joinGroup(groupId);
+    getTransport().joinGroup(groupId);
     set({ activeGroupId: groupId, messages: hydrateGroup(groupId) });
   },
 
@@ -128,17 +148,21 @@ export const useMesh = create<MeshStore>((set, get) => ({
 
 let started = false;
 
-/** Wires the transport into the store. Mount once at app root. */
+/** Wires the transport into the store. Mount once at app root, AFTER identity is loaded. */
 export function useMeshBootstrap(): void {
   useEffect(() => {
+    const transport = getTransport();
+
     if (!started) {
       started = true;
       initStoreAndForward();
       transport.start();
       const initialGroup = useMesh.getState().activeGroupId;
       transport.joinGroup(initialGroup);
-      // Hydrate the active group's history before any new events land.
-      useMesh.setState({ messages: hydrateGroup(initialGroup) });
+      useMesh.setState({
+        messages: hydrateGroup(initialGroup),
+        state: { ...useMesh.getState().state, mode: _identity?.modeDefault ?? 'trek' },
+      });
     }
 
     const replayFn = transport.replay?.bind(transport);
@@ -177,7 +201,5 @@ export function useMeshBootstrap(): void {
   }, []);
 }
 
-export const self = {
-  senderId: selfSenderId(),
-  name: selfName(),
-};
+const selfRef = { senderId: '0A', name: 'YOU' };
+export const self = selfRef;

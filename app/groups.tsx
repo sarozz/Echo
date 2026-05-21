@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { color, font, radius, space } from '../src/theme/tokens';
 import { useMesh } from '../src/mesh/useMesh';
 import type { Group } from '../src/mesh/types';
+import { t, useLocale } from '../src/i18n/strings';
 
 export default function GroupsScreen(): React.JSX.Element {
   const groups = useMesh((s) => s.groups);
@@ -13,6 +14,7 @@ export default function GroupsScreen(): React.JSX.Element {
   const switchGroup = useMesh((s) => s.switchGroup);
   const joinByCode = useMesh((s) => s.joinByCode);
   const [code, setCode] = useState('');
+  useLocale();
 
   const onSelect = (id: string): void => {
     switchGroup(id);
@@ -32,17 +34,17 @@ export default function GroupsScreen(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.root} edges={['bottom']}>
       <View style={styles.header}>
-        <Text style={styles.title}>GROUPS</Text>
-        <Text style={styles.sub}>SELECT A MESH GROUP OR JOIN WITH A CODE</Text>
+        <Text style={styles.title}>{t('groups.title')}</Text>
+        <Text style={styles.sub}>{t('groups.sub')}</Text>
       </View>
 
       <View style={styles.joinCard}>
-        <Text style={styles.joinLabel}>JOIN VIA CODE</Text>
+        <Text style={styles.joinLabel}>{t('groups.join.label')}</Text>
         <View style={styles.joinRow}>
           <TextInput
             value={code}
             onChangeText={(v) => setCode(v.toUpperCase())}
-            placeholder="E.G. ANP-7Q"
+            placeholder={t('groups.join.placeholder')}
             placeholderTextColor={color.tx3}
             style={styles.input}
             autoCapitalize="characters"
@@ -62,7 +64,7 @@ export default function GroupsScreen(): React.JSX.Element {
               ];
             }}
           >
-            <Text style={[styles.joinBtnLabel, code.trim().length === 0 ? { color: color.tx3 } : null]}>JOIN</Text>
+            <Text style={[styles.joinBtnLabel, code.trim().length === 0 ? { color: color.tx3 } : null]}>{t('groups.join.button')}</Text>
           </Pressable>
         </View>
       </View>
@@ -103,8 +105,8 @@ function GroupRow({
         <Text style={styles.code}>CODE {group.code} · GROUP#{group.id.toUpperCase()}</Text>
       </View>
       <View style={styles.right}>
-        <Text style={styles.peers}>{group.peerCount} PEERS</Text>
-        {active && <Text style={styles.activeTag}>ACTIVE</Text>}
+        <Text style={styles.peers}>{group.peerCount} {t('groups.peers')}</Text>
+        {active && <Text style={styles.activeTag}>{t('groups.active')}</Text>}
       </View>
     </Pressable>
   );

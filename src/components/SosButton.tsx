@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { color, font, radius, space } from '../theme/tokens';
+import { t, useLocale } from '../i18n/strings';
 
 interface Props { onConfirm: () => void; }
 
 export function SosButton({ onConfirm }: Props): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  useLocale();
 
   return (
     <>
@@ -17,22 +19,20 @@ export function SosButton({ onConfirm }: Props): React.JSX.Element {
         }}
         style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
         accessibilityRole="button"
-        accessibilityLabel="SOS — broadcasts your location to the whole group"
+        accessibilityLabel={`${t('sos.button.label')} — ${t('sos.button.sub')}`}
       >
-        <Text style={styles.label}>SOS</Text>
-        <Text style={styles.sub}>BROADCASTS YOUR LOCATION TO THE WHOLE GROUP</Text>
+        <Text style={styles.label}>{t('sos.button.label')}</Text>
+        <Text style={styles.sub}>{t('sos.button.sub')}</Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
-            <Text style={styles.title}>SEND SOS?</Text>
-            <Text style={styles.copy}>
-              This broadcasts your location and an emergency flag to every peer in the group. Use only for real emergencies.
-            </Text>
+            <Text style={styles.title}>{t('sos.confirm.title')}</Text>
+            <Text style={styles.copy}>{t('sos.confirm.body')}</Text>
             <View style={styles.actions}>
-              <Pressable style={[styles.action, styles.cancel]} onPress={() => setOpen(false)}>
-                <Text style={styles.cancelText}>CANCEL</Text>
+              <Pressable style={[styles.action, styles.cancel]} onPress={() => setOpen(false)} accessibilityRole="button">
+                <Text style={styles.cancelText}>{t('sos.confirm.cancel')}</Text>
               </Pressable>
               <Pressable
                 style={[styles.action, styles.confirm]}
@@ -41,8 +41,9 @@ export function SosButton({ onConfirm }: Props): React.JSX.Element {
                   setOpen(false);
                   onConfirm();
                 }}
+                accessibilityRole="button"
               >
-                <Text style={styles.confirmText}>SEND SOS</Text>
+                <Text style={styles.confirmText}>{t('sos.confirm.send')}</Text>
               </Pressable>
             </View>
           </View>

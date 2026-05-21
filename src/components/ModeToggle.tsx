@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { color, font, radius, space } from '../theme/tokens';
 import type { Mode } from '../mesh/types';
+import { t, useLocale } from '../i18n/strings';
 
 interface Props {
   mode: Mode;
@@ -10,10 +11,11 @@ interface Props {
 }
 
 export function ModeToggle({ mode, onChange }: Props): React.JSX.Element {
+  useLocale();
   return (
     <View style={styles.wrap}>
-      <Segment label="TREK" active={mode === 'trek'} onPress={() => { onChange('trek'); Haptics.selectionAsync(); }} />
-      <Segment label="RIDE" active={mode === 'ride'} onPress={() => { onChange('ride'); Haptics.selectionAsync(); }} />
+      <Segment label={t('mode.trek')} active={mode === 'trek'} onPress={() => { onChange('trek'); Haptics.selectionAsync(); }} />
+      <Segment label={t('mode.ride')} active={mode === 'ride'} onPress={() => { onChange('ride'); Haptics.selectionAsync(); }} />
     </View>
   );
 }

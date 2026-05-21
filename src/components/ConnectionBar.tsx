@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { color, font, radius, space } from '../theme/tokens';
 import type { ConnState } from '../mesh/types';
+import { t, useLocale } from '../i18n/strings';
 
 interface Props {
   conn: ConnState;
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function ConnectionBar({ conn, peerCount, hops }: Props): React.JSX.Element {
+  useLocale();
   const connected = conn === 'connected' || conn === 'leaf';
   const tint =
     conn === 'connected' ? color.signal :
@@ -26,13 +28,13 @@ export function ConnectionBar({ conn, peerCount, hops }: Props): React.JSX.Eleme
                            color.tx3;
 
   const label =
-    conn === 'connected'   ? `CONNECTED · ${peerCount} PEERS · ${hops} HOPS · RELAY` :
-    conn === 'leaf'        ? `LEAF · ${peerCount} PEERS · ${hops} HOPS` :
-    conn === 'discovering' ? 'SCANNING FOR PEERS…' :
-                             'OFFLINE · NO MESH';
+    conn === 'connected'   ? `${t('status.connected')} · ${peerCount} ${t('status.peers')} · ${hops} ${t('status.hops')} · ${t('status.relay')}` :
+    conn === 'leaf'        ? `${t('status.leaf')} · ${peerCount} ${t('status.peers')} · ${hops} ${t('status.hops')}` :
+    conn === 'discovering' ? t('status.scanning') :
+                             t('status.offline');
 
   return (
-    <View style={styles.row}>
+    <View style={styles.row} accessibilityRole="text" accessibilityLabel={label}>
       <Pulse tint={tint} active={connected || conn === 'discovering'} />
       <Text style={[styles.label, { color: tint }]} numberOfLines={1}>
         {label}
