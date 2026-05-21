@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { mockTransport, selfName, selfSenderId } from './MockTransport';
 import type { MeshTransport } from './MeshTransport';
 import type {
@@ -11,8 +12,35 @@ import type {
   VoiceActivity,
 } from './types';
 
-// STAGE 2: swap `mockTransport` for the native transport instance.
-const transport: MeshTransport = mockTransport;
+/**
+ * Transport selection.
+ *
+ * - Expo Go (StoreClient) cannot load native modules → MockTransport.
+ * - Dev client / standalone (Bare, Standalone) → NativeTransport.
+ *
+ * Forcing the mock during a dev-client build is occasionally useful (UI work
+ * without devices nearby); set `EXPO_PUBLIC_FORCE_MOCK_MESH=1` in `.env` to
+ * opt in. `EXPO_PUBLIC_*` is the only env scheme Expo Router exposes to JS.
+ */
+function pickTransport(): MeshTransport {
+  const forceMock = process.env['EXPO_PUBLIC_FORCE_MOCK_MESH'] === '1';
+  const env = Constants.executionEnvironment;
+  const isExpoGo = env === ExecutionEnvironment.StoreClient;
+  if (forceMock || isExpoGo) return mockTransport;
+
+  try {
+    // Lazy require — keeps Expo Go bundles clean of native imports.
+    const mod = require('./NativeTransport') as typeof import('./NativeTransport');
+    return new mod.NativeTransport({ senderId: selfSenderId(), name: selfName() });
+  } catch (e) {
+    if (__DEV__) {
+      console.warn('[echo] NativeTransport unavailable, falling back to mock:', e);
+    }
+    return mockTransport;
+  }
+}
+
+const transport: MeshTransport = pickTransport();
 
 const INITIAL_GROUPS: Group[] = [
   { id: 'main', name: 'ANNAPURNA CIRCUIT', code: 'ANP-7Q', peerCount: 4 },

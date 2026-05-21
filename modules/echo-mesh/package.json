@@ -1,0 +1,8 @@
+{
+  "name": "echo-mesh",
+  "version": "0.1.0",
+  "description": "Echo's native mesh transport (BLE + Nearby Connections + MultipeerConnectivity)",
+  "main": "index.ts",
+  "types": "index.ts",
+  "private": true
+}
