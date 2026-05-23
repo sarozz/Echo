@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
-import { Tabs, Redirect, usePathname } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts as useSaira, SairaCondensed_700Bold, SairaCondensed_800ExtraBold } from '@expo-google-fonts/saira-condensed';
@@ -28,7 +28,6 @@ export default function RootLayout(): React.JSX.Element | null {
   });
 
   const [boot, setBoot] = useState<BootState>({ phase: 'loading' });
-  const pathname = usePathname();
 
   useEffect(() => {
     (async () => {
@@ -54,10 +53,6 @@ export default function RootLayout(): React.JSX.Element | null {
   }, [loaded, boot.phase]);
 
   if (!loaded || boot.phase === 'loading') return null;
-
-  if (boot.phase === 'onboarding' && pathname !== '/onboarding') {
-    return <Redirect href="/onboarding" />;
-  }
 
   return (
     <View style={styles.root} onLayout={onLayout}>

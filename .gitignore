@@ -7,3 +7,6 @@ npm-debug.*
 .DS_Store
 .env*.local
 expo-env.d.ts
+
+# Harness output from .claude/skills/run-echo
+screenshots/

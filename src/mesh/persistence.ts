@@ -1,5 +1,11 @@
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 import type { EchoMessage } from './types';
+
+// On web (and any platform where expo-sqlite's native bindings aren't
+// loadable) we transparently fall back to an in-memory backing. This keeps
+// the API identical for callers; only persistence-across-reload is lost.
+const USE_MEMORY = Platform.OS === 'web';
 
 /**
  * SQLite-backed persistence for messages and their per-peer delivery state.
@@ -65,6 +71,26 @@ function getDb(): SQLite.SQLiteDatabase {
   return db;
 }
 
+// In-memory backing for web. Keys mirror the SQLite schema for parity.
+interface MemRow {
+  wireKey: string;
+  id: string;
+  groupId: string;
+  senderId: string;
+  senderName: string;
+  kind: 'text' | 'sos' | 'voice';
+  body: string;
+  ts: number;
+  mine: number;
+  status: 'queued' | 'sent' | 'relayed' | 'delivered';
+  wireMessageId: number | null;
+  deliveredCount: number | null;
+  peerCount: number | null;
+  relayedHops: number | null;
+}
+const memMessages = new Map<string, MemRow>();
+const memDeliveries = new Set<string>();  // "wireKey|peerSenderId"
+
 function wireKey(senderId: string, wireMessageId: number | undefined): string | null {
   if (wireMessageId === undefined) return null;
   return `${senderId}:${wireMessageId}`;
@@ -87,15 +113,37 @@ export interface StoredMessage extends EchoMessage {
 }
 
 export function init(): void {
+  if (USE_MEMORY) return;
   getDb();
 }
 
 export function upsertMessage(m: EchoMessage): void {
-  const db = getDb();
   const wireMsgId = (m as StoredMessage).wireMessageId ?? inferWireMessageId(m);
   const key = wireKey(m.senderId, wireMsgId);
-  // Without a wire id we can't dedup across restarts; index by JS id only.
   const effectiveKey = key ?? `js:${m.id}`;
+
+  if (USE_MEMORY) {
+    const existing = memMessages.get(effectiveKey);
+    memMessages.set(effectiveKey, {
+      wireKey: effectiveKey,
+      id: m.id,
+      groupId: m.groupId,
+      senderId: m.senderId,
+      senderName: m.senderName,
+      kind: m.kind,
+      body: m.body,
+      ts: m.ts,
+      mine: m.mine ? 1 : 0,
+      status: m.status,
+      wireMessageId: wireMsgId ?? null,
+      deliveredCount: m.deliveredCount ?? existing?.deliveredCount ?? null,
+      peerCount: m.peerCount ?? existing?.peerCount ?? null,
+      relayedHops: m.relayedHops ?? existing?.relayedHops ?? null,
+    });
+    return;
+  }
+
+  const db = getDb();
   db.runSync(
     `INSERT INTO messages (wireKey, id, groupId, senderId, senderName, kind, body, ts, mine, status, wireMessageId, deliveredCount, peerCount, relayedHops)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -123,8 +171,12 @@ export function upsertMessage(m: EchoMessage): void {
 }
 
 export function markDelivered(senderId: string, wireMessageId: number, peerSenderId: string): void {
-  const db = getDb();
   const key = `${senderId}:${wireMessageId}`;
+  if (USE_MEMORY) {
+    memDeliveries.add(`${key}|${peerSenderId}`);
+    return;
+  }
+  const db = getDb();
   db.runSync(
     `INSERT OR IGNORE INTO deliveries (wireKey, peerSenderId) VALUES (?, ?)`,
     [key, peerSenderId],
@@ -132,6 +184,26 @@ export function markDelivered(senderId: string, wireMessageId: number, peerSende
 }
 
 export function loadRecent(groupId: string, limit = 200): EchoMessage[] {
+  if (USE_MEMORY) {
+    const rows = Array.from(memMessages.values())
+      .filter((r) => r.groupId === groupId)
+      .sort((a, b) => a.ts - b.ts)
+      .slice(0, limit);
+    return rows.map((r) => ({
+      id: r.id,
+      groupId: r.groupId,
+      senderId: r.senderId,
+      senderName: r.senderName,
+      kind: r.kind,
+      body: r.body,
+      ts: r.ts,
+      mine: r.mine === 1,
+      status: r.status,
+      ...(r.deliveredCount !== null ? { deliveredCount: r.deliveredCount } : {}),
+      ...(r.peerCount !== null ? { peerCount: r.peerCount } : {}),
+      ...(r.relayedHops !== null ? { relayedHops: r.relayedHops } : {}),
+    }));
+  }
   const db = getDb();
   const rows = db.getAllSync<{
     id: string;
@@ -177,6 +249,26 @@ export function pendingForPeer(peerSenderId: string, sinceMs: number): Array<{
   ts: number;
   wireMessageId: number;
 }> {
+  if (USE_MEMORY) {
+    const out: Array<{ groupId: string; senderId: string; senderName: string; kind: 'text' | 'sos'; body: string; ts: number; wireMessageId: number }> = [];
+    for (const r of memMessages.values()) {
+      if (r.mine !== 1) continue;
+      if (r.ts < sinceMs) continue;
+      if (r.wireMessageId === null) continue;
+      if (r.kind !== 'text' && r.kind !== 'sos') continue;
+      if (memDeliveries.has(`${r.wireKey}|${peerSenderId}`)) continue;
+      out.push({
+        groupId: r.groupId,
+        senderId: r.senderId,
+        senderName: r.senderName,
+        kind: r.kind,
+        body: r.body,
+        ts: r.ts,
+        wireMessageId: r.wireMessageId,
+      });
+    }
+    return out;
+  }
   const db = getDb();
   const rows = db.getAllSync<{
     groupId: string;
@@ -211,6 +303,18 @@ export function pendingForPeer(peerSenderId: string, sinceMs: number): Array<{
 
 /** Purges messages older than `cutoffMs`. Call on app start or daily. */
 export function purgeOlderThan(cutoffMs: number): void {
+  if (USE_MEMORY) {
+    const liveKeys = new Set<string>();
+    for (const [k, r] of memMessages) {
+      if (r.ts < cutoffMs) memMessages.delete(k);
+      else liveKeys.add(k);
+    }
+    for (const d of Array.from(memDeliveries)) {
+      const [wk] = d.split('|');
+      if (wk !== undefined && !liveKeys.has(wk)) memDeliveries.delete(d);
+    }
+    return;
+  }
   const db = getDb();
   db.runSync(`DELETE FROM messages WHERE ts < ?`, [cutoffMs]);
   db.runSync(

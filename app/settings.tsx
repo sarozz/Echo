@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { color, font, radius, space } from '../src/theme/tokens';
-import { LOCALES, t, useLocale, setLocale, type Locale } from '../src/i18n/strings';
+import { LOCALES, t, useLocale, setLocale, getLocale, type Locale } from '../src/i18n/strings';
 import { loadIdentity, saveIdentity, suggestSenderId, type Identity } from '../src/identity/identity';
 import { setActiveIdentity, useMesh } from '../src/mesh/useMesh';
 
@@ -130,17 +130,20 @@ export default function SettingsScreen(): React.JSX.Element {
 
           <Section title={t('settings.language')}>
             <View style={styles.col}>
-              {LOCALES.map((loc) => (
-                <Pressable
-                  key={loc.code}
-                  onPress={() => { void setLocale(loc.code as Locale); Haptics.selectionAsync(); }}
-                  style={[styles.optionRow, useLocale() === loc.code ? styles.optionRowActive : null]}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: useLocale() === loc.code }}
-                >
-                  <Text style={styles.optionLabel}>{loc.native}</Text>
-                </Pressable>
-              ))}
+              {LOCALES.map((loc) => {
+                const active = getLocale() === loc.code;
+                return (
+                  <Pressable
+                    key={loc.code}
+                    onPress={() => { void setLocale(loc.code as Locale); Haptics.selectionAsync(); }}
+                    style={[styles.optionRow, active ? styles.optionRowActive : null]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={styles.optionLabel}>{loc.native}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </Section>
 

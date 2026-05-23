@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Redirect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { color, font, radius, space } from '../src/theme/tokens';
 import { useMesh } from '../src/mesh/useMesh';
@@ -19,8 +20,16 @@ import { MessageBubble } from '../src/components/MessageBubble';
 import { VoiceButton } from '../src/components/VoiceButton';
 import { SosButton } from '../src/components/SosButton';
 import { t, useLocale } from '../src/i18n/strings';
+import { snapshot as identitySnapshot } from '../src/identity/identity';
 
 export default function ChannelScreen(): React.JSX.Element {
+  // Gate the channel on having an identity. Doing this here (inside a Tabs
+  // child) instead of in _layout.tsx is what avoids the "Attempted to
+  // navigate before mounting the Root Layout" error — the Tabs navigator is
+  // already mounted by the time this screen renders.
+  if (identitySnapshot().createdAt === 0) {
+    return <Redirect href="/onboarding" />;
+  }
   const state = useMesh((s) => s.state);
   const messages = useMesh((s) => s.messages);
   const voice = useMesh((s) => s.voice);
