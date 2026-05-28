@@ -1,0 +1,9 @@
+{
+  "platforms": ["android", "ios"],
+  "android": {
+    "modules": ["expo.modules.echomesh.EchoMeshModule"]
+  },
+  "ios": {
+    "modules": ["EchoMeshModule"]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "echo-audio",
+  "version": "0.1.0",
+  "description": "Echo's voice pipeline — mic capture, VAD, encode, jitter buffer, playback",
+  "main": "index.ts",
+  "types": "index.ts",
+  "private": true
+}
