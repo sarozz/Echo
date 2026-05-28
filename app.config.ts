@@ -8,11 +8,6 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
   icon: './assets/icon.png',
-  splash: {
-    image: './assets/splash.png',
-    resizeMode: 'contain',
-    backgroundColor: '#080B0C',
-  },
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'app.echo.prototype',
@@ -69,6 +64,14 @@ const config: ExpoConfig = {
     'expo-location',
     'expo-notifications',
     [
+      'expo-splash-screen',
+      {
+        image: './assets/splash.png',
+        resizeMode: 'contain',
+        backgroundColor: '#080B0C',
+      },
+    ],
+    [
       'expo-build-properties',
       {
         android: {
@@ -80,7 +83,7 @@ const config: ExpoConfig = {
           extraMavenRepos: [],
         },
         ios: {
-          deploymentTarget: '15.1',
+          deploymentTarget: '16.4',
         },
       },
     ],

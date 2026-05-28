@@ -1,10 +1,11 @@
-import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
+import SQLite, { type SQLiteDatabase } from './sqliteShim';
 import type { EchoMessage } from './types';
 
 // On web (and any platform where expo-sqlite's native bindings aren't
 // loadable) we transparently fall back to an in-memory backing. This keeps
 // the API identical for callers; only persistence-across-reload is lost.
+// sqliteShim.web.ts exports null so the web bundle never reaches expo-sqlite.
 const USE_MEMORY = Platform.OS === 'web';
 
 /**
@@ -61,9 +62,9 @@ const SCHEMA = `
   );
 `;
 
-let dbCache: SQLite.SQLiteDatabase | null = null;
+let dbCache: SQLiteDatabase | null = null;
 
-function getDb(): SQLite.SQLiteDatabase {
+function getDb(): SQLiteDatabase {
   if (dbCache) return dbCache;
   const db = SQLite.openDatabaseSync('echo.db');
   db.execSync(SCHEMA);

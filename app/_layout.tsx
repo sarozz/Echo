@@ -138,7 +138,9 @@ function AppTabs({ onboardingOnly }: { onboardingOnly: boolean }): React.JSX.Ele
   );
 }
 
-function TabIcon({ glyph, tint }: { glyph: string; tint: string }): React.JSX.Element {
+// `tabBarIcon`'s `color` prop is typed as `ColorValue` (string | OpaqueColorValue)
+// since react-native 0.85; matches what we forward to Text's `style.color`.
+function TabIcon({ glyph, tint }: { glyph: string; tint: import('react-native').ColorValue }): React.JSX.Element {
   return <Text style={{ color: tint, fontSize: 20, fontFamily: font.displayHeavy }}>{glyph}</Text>;
 }
 

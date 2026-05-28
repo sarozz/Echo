@@ -1,8 +1,7 @@
-import { EventEmitter, requireNativeModule, Subscription } from 'expo-modules-core';
+import { LegacyEventEmitter, requireNativeModule, type EventSubscription } from 'expo-modules-core';
 
 import type {
   CapturedFrame,
-  EchoAudioEvents,
   IncomingFrame,
   StartCaptureOptions,
   TalkerEvent,
@@ -22,7 +21,7 @@ const Native = requireNativeModule('EchoAudio') as {
   }>;
 };
 
-const emitter = new EventEmitter(Native as unknown as ConstructorParameters<typeof EventEmitter>[0]);
+const emitter = new LegacyEventEmitter(Native as unknown as ConstructorParameters<typeof LegacyEventEmitter>[0]);
 
 export function startCapture(opts: StartCaptureOptions): Promise<void> {
   return Native.startCapture(opts);
@@ -40,12 +39,12 @@ export function getStats(): ReturnType<typeof Native.getStats> {
   return Native.getStats();
 }
 
-export function onCapturedFrame(cb: (f: CapturedFrame) => void): Subscription {
-  return emitter.addListener<EchoAudioEvents['onCapturedFrame']>('onCapturedFrame', cb);
+export function onCapturedFrame(cb: (f: CapturedFrame) => void): EventSubscription {
+  return emitter.addListener<CapturedFrame>('onCapturedFrame', cb);
 }
 
-export function onTalker(cb: (t: TalkerEvent) => void): Subscription {
-  return emitter.addListener<EchoAudioEvents['onTalker']>('onTalker', cb);
+export function onTalker(cb: (t: TalkerEvent) => void): EventSubscription {
+  return emitter.addListener<TalkerEvent>('onTalker', cb);
 }
 
 export type {

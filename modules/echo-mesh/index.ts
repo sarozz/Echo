@@ -1,7 +1,6 @@
-import { EventEmitter, requireNativeModule, Subscription } from 'expo-modules-core';
+import { LegacyEventEmitter, requireNativeModule, type EventSubscription } from 'expo-modules-core';
 
 import type {
-  EchoMeshEvents,
   EchoMeshStartOptions,
   NativeMessageEvent,
   NativePeer,
@@ -28,7 +27,10 @@ const Native = requireNativeModule('EchoMesh') as {
   getCurrentPeers(): Promise<NativePeer[]>;
 };
 
-const emitter = new EventEmitter(Native as unknown as ConstructorParameters<typeof EventEmitter>[0]);
+// LegacyEventEmitter is the SDK-56 replacement for the old EventEmitter
+// constructor that takes a native-module shape; the new EventEmitter is
+// constructed without args and intended for use by the native module itself.
+const emitter = new LegacyEventEmitter(Native as unknown as ConstructorParameters<typeof LegacyEventEmitter>[0]);
 
 export function start(opts: EchoMeshStartOptions): Promise<void> {
   return Native.start(opts);
@@ -89,23 +91,23 @@ export function getCurrentPeers(): Promise<NativePeer[]> {
   return Native.getCurrentPeers();
 }
 
-export function onPeers(cb: (peers: NativePeer[]) => void): Subscription {
-  return emitter.addListener<EchoMeshEvents['onPeers']>('onPeers', (e) => cb(e.peers));
+export function onPeers(cb: (peers: NativePeer[]) => void): EventSubscription {
+  return emitter.addListener<{ peers: NativePeer[] }>('onPeers', (e) => cb(e.peers));
 }
 
-export function onMessage(cb: (m: NativeMessageEvent) => void): Subscription {
+export function onMessage(cb: (m: NativeMessageEvent) => void): EventSubscription {
   return emitter.addListener<NativeMessageEvent>('onMessage', cb);
 }
 
-export function onState(cb: (s: NativeStateEvent) => void): Subscription {
+export function onState(cb: (s: NativeStateEvent) => void): EventSubscription {
   return emitter.addListener<NativeStateEvent>('onState', cb);
 }
 
-export function onVoiceActivity(cb: (v: NativeVoiceEvent) => void): Subscription {
+export function onVoiceActivity(cb: (v: NativeVoiceEvent) => void): EventSubscription {
   return emitter.addListener<NativeVoiceEvent>('onVoiceActivity', cb);
 }
 
-export function onVoiceFrame(cb: (f: NativeVoiceFrame) => void): Subscription {
+export function onVoiceFrame(cb: (f: NativeVoiceFrame) => void): EventSubscription {
   return emitter.addListener<NativeVoiceFrame>('onVoiceFrame', cb);
 }
 

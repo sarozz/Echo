@@ -20,7 +20,7 @@ import type {
   NativeVoiceFrame,
 } from '../../modules/echo-mesh/EchoMesh.types';
 import type { CapturedFrame, IncomingFrame } from '../../modules/echo-audio/EchoAudio.types';
-import type { Subscription } from 'expo-modules-core';
+import type { EventSubscription } from "expo-modules-core";
 
 type BackendPref = 'auto' | 'nearby' | 'multipeer' | 'ble';
 
@@ -37,18 +37,18 @@ interface NativeMeshModule {
   setGroupSecret(groupId: string, code: string): Promise<void>;
   clearGroupSecret(groupId: string): Promise<void>;
   broadcastLocation(groupId: string, lat: number, lon: number, accuracy: number): Promise<void>;
-  onPeers(cb: (peers: NativePeer[]) => void): Subscription;
-  onMessage(cb: (m: NativeMessageEvent) => void): Subscription;
-  onState(cb: (s: NativeStateEvent) => void): Subscription;
-  onVoiceActivity(cb: (v: NativeVoiceEvent) => void): Subscription;
-  onVoiceFrame(cb: (f: NativeVoiceFrame) => void): Subscription;
+  onPeers(cb: (peers: NativePeer[]) => void): EventSubscription;
+  onMessage(cb: (m: NativeMessageEvent) => void): EventSubscription;
+  onState(cb: (s: NativeStateEvent) => void): EventSubscription;
+  onVoiceActivity(cb: (v: NativeVoiceEvent) => void): EventSubscription;
+  onVoiceFrame(cb: (f: NativeVoiceFrame) => void): EventSubscription;
 }
 
 interface NativeAudioModule {
   startCapture(opts: { mode: 'ptt' | 'vox'; vadThreshold?: number; sampleRateHz?: number }): Promise<void>;
   stopCapture(): Promise<void>;
   pushIncomingFrame(f: IncomingFrame): Promise<void>;
-  onCapturedFrame(cb: (f: CapturedFrame) => void): Subscription;
+  onCapturedFrame(cb: (f: CapturedFrame) => void): EventSubscription;
 }
 
 /**
@@ -66,7 +66,7 @@ interface NativeAudioModule {
 export class NativeTransport implements MeshTransport {
   private mesh: NativeMeshModule;
   private audio: NativeAudioModule;
-  private subs: Subscription[] = [];
+  private subs: EventSubscription[] = [];
   private selfSenderId: string;
   private selfName: string;
   private backendPref: BackendPref;
